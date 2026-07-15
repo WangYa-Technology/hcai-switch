@@ -990,11 +990,15 @@ function App() {
 
         case "hcai":
           return (
-            <HcaiPanel
-              onProvidersChanged={() => {
-                void refetch();
-              }}
-            />
+            <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+                <HcaiPanel
+                  onProvidersChanged={() => {
+                    void refetch();
+                  }}
+                />
+              </div>
+            </div>
           );
         case "sessions":
           return (
