@@ -235,7 +235,7 @@ async fn send_http_request_with_hcai_fallback(
     timeout_secs: u64,
 ) -> Result<String, AppError> {
     match send_http_request(config, timeout_secs).await {
-        Ok(body) => return Ok(body),
+        Ok(body) => Ok(body),
         Err(first_err) => {
             let msg = first_err.to_string();
             // 鉴权类 4xx 对所有节点通常一致，不再重试

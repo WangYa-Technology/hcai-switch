@@ -224,6 +224,7 @@ fn write_grok_dotenv(api_key: Option<&str>, env_var_names: &[String]) -> Result<
 /// Build a BYOK / custom-model provider config by merging a model entry into a base TOML.
 ///
 /// Preserves unrelated sections from `base_toml` (ui/cli/marketplace/mcp/etc.).
+#[allow(dead_code)] // retained for BYOK write path / tests
 pub fn build_byok_config_toml(
     base_toml: &str,
     model_key: &str,
@@ -272,6 +273,7 @@ pub fn build_byok_config_toml(
 }
 
 /// Extract a short label from OIDC auth (email if present).
+#[allow(dead_code)] // retained for Grok account UI / status
 pub fn auth_display_hint(auth: &Value) -> Option<String> {
     let obj = auth.as_object()?;
     for (_k, v) in obj {
@@ -292,6 +294,7 @@ pub fn auth_display_hint(auth: &Value) -> Option<String> {
 }
 
 /// Normalize provider settings for DB storage.
+#[allow(dead_code)] // retained for provider save path
 pub fn normalize_settings(mut settings: Value) -> Value {
     if !settings.is_object() {
         return json!({ "auth": {}, "config": "" });
@@ -323,6 +326,7 @@ pub fn live_exists() -> bool {
 }
 
 /// Snapshot live into a plain map for debugging / import.
+#[allow(dead_code)] // retained for diagnostics / import
 pub fn live_status() -> Map<String, Value> {
     let mut m = Map::new();
     m.insert("dir".into(), json!(get_grok_config_dir().to_string_lossy()));

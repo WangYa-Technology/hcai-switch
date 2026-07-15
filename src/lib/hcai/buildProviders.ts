@@ -277,9 +277,7 @@ export function buildHcaiProviders(
         settingsConfig: {
           auth: generateThirdPartyAuth(key),
           config: generateThirdPartyConfig("hcai", gatewayV1, model),
-          modelCatalog: {
-            models: [{ model, displayName: modelDisplayName(model) }],
-          },
+          // 模型映射默认留空，需要时在编辑页自行添加
         },
         meta: withHcaiUsageMeta(gatewayRoot, {
           apiFormat: "openai_responses",

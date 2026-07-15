@@ -68,6 +68,7 @@ describe("useDirectorySettings", () => {
       if (app === "claude") return "/remote/claude";
       if (app === "codex") return "/remote/codex";
       if (app === "opencode") return "/remote/opencode";
+      if (app === "grok") return "/remote/grok";
       return "/remote/unknown";
     });
     selectConfigDirectoryMock.mockReset();
@@ -88,6 +89,7 @@ describe("useDirectorySettings", () => {
       claude: "/remote/claude",
       codex: "/remote/codex",
       opencode: "/remote/opencode",
+      grok: "/remote/grok",
     });
   });
 

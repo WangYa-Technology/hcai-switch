@@ -124,16 +124,8 @@ export const codexProviderPresets: CodexProviderPreset[] = [
       "https://ai-prod.hctopup.com/v1",
     ],
     // 原生 Responses；wire_api 已由 generateThirdPartyConfig 设为 responses
+    // 模型映射默认留空，用户需要时再在表单中自行添加
     apiFormat: "openai_responses",
-    modelCatalog: modelCatalog([
-      { model: "codex-auto-review", displayName: "Codex Auto Review" },
-      { model: "gpt-5.4", displayName: "GPT-5.4" },
-      { model: "gpt-5.4-mini", displayName: "GPT-5.4 Mini" },
-      { model: "gpt-5.5", displayName: "GPT-5.5" },
-      { model: "gpt-5.6-luna", displayName: "GPT-5.6 Luna" },
-      { model: "gpt-5.6-sol", displayName: "GPT-5.6 Sol" },
-      { model: "gpt-5.6-terra", displayName: "GPT-5.6 Terra" },
-    ]),
     category: "custom",
     icon: "hcai",
     iconColor: "#E53935",
