@@ -133,6 +133,13 @@ export const iconMetadata: Record<string, IconMetadata> = {
     keywords: ["huoshan", "volcengine", "ark", "agentplan", "byteplus"],
     defaultColor: "#3370FF",
   },
+  hcai: {
+    name: "hcai",
+    displayName: "HCAI",
+    category: "ai-provider",
+    keywords: ["hcai", "hctopup", "hc", "claude", "codex"],
+    defaultColor: "#E53935",
+  },
   byteplus: {
     name: "byteplus",
     displayName: "BytePlus",

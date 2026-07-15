@@ -169,18 +169,20 @@ export interface UsageRangeSelection {
  * only ever show a partial number and mislead users into reading it as the
  * Desktop's full usage. The backend collapses `claude-desktop → claude` in
  * every dashboard query (see `folded_app_type_sql`).
- * `opencode` / `openclaw` / `hermes` have no proxy handler at all — they
- * appear only as managed apps elsewhere.
+ * `opencode` has no proxy handler at all — it appears only as a managed app
+ * elsewhere. Historical `gemini` request logs may still appear in stored data
+ * but are no longer shown in the dashboard filter.
  */
-export type AppType = "claude" | "codex" | "gemini" | "opencode";
+export type AppType = "claude" | "codex" | "gemini" | "opencode" | "grok";
 
 export type AppTypeFilter = "all" | AppType;
 
+/** 使用统计筛选栏展示的应用（不含已下线的 Gemini） */
 export const KNOWN_APP_TYPES: ReadonlyArray<AppType> = [
   "claude",
   "codex",
-  "gemini",
   "opencode",
+  "grok",
 ];
 
 /**
@@ -197,7 +199,8 @@ export const KNOWN_APP_TYPES: ReadonlyArray<AppType> = [
  */
 export const CACHE_INCLUSIVE_APP_TYPES: ReadonlySet<string> = new Set([
   "codex",
-  "gemini",
+  "gemini", // 历史数据
+  "grok",
 ]);
 
 /** Subset of request-log fields needed to derive cache-normalized input. */

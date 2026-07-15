@@ -120,11 +120,19 @@ export function useSettingsForm(): UseSettingsFormResult {
         data.preserveCodexOfficialAuthOnSwitch ?? false,
       unifyCodexSessionHistory: data.unifyCodexSessionHistory ?? false,
       claudeConfigDir: sanitizeDir(data.claudeConfigDir),
+      grokConfigDir: sanitizeDir((data as Settings).grokConfigDir),
       codexConfigDir: sanitizeDir(data.codexConfigDir),
-      geminiConfigDir: sanitizeDir(data.geminiConfigDir),
       opencodeConfigDir: sanitizeDir(data.opencodeConfigDir),
-      openclawConfigDir: sanitizeDir(data.openclawConfigDir),
       language: normalizedLanguage,
+      visibleApps: data.visibleApps
+        ? {
+            claude: data.visibleApps.claude ?? true,
+            "claude-desktop": data.visibleApps["claude-desktop"] ?? true,
+            codex: data.visibleApps.codex ?? true,
+            opencode: data.visibleApps.opencode ?? true,
+            grok: data.visibleApps.grok ?? true,
+          }
+        : undefined,
     };
 
     setSettingsState(normalized);
@@ -187,10 +195,18 @@ export function useSettingsForm(): UseSettingsFormResult {
         unifyCodexSessionHistory: serverData.unifyCodexSessionHistory ?? false,
         claudeConfigDir: sanitizeDir(serverData.claudeConfigDir),
         codexConfigDir: sanitizeDir(serverData.codexConfigDir),
-        geminiConfigDir: sanitizeDir(serverData.geminiConfigDir),
         opencodeConfigDir: sanitizeDir(serverData.opencodeConfigDir),
-        openclawConfigDir: sanitizeDir(serverData.openclawConfigDir),
         language: normalizedLanguage,
+        visibleApps: serverData.visibleApps
+          ? {
+              claude: serverData.visibleApps.claude ?? true,
+              "claude-desktop":
+                serverData.visibleApps["claude-desktop"] ?? true,
+              codex: serverData.visibleApps.codex ?? true,
+              opencode: serverData.visibleApps.opencode ?? true,
+              grok: serverData.visibleApps.grok ?? true,
+            }
+          : undefined,
       };
 
       setSettingsState(normalized);

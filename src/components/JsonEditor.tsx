@@ -84,16 +84,15 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
     // 创建编辑器扩展
     const minHeightPx = height ? undefined : Math.max(1, rows) * 18;
 
-    // 使用 baseTheme 定义基础样式，优先级低于 oneDark，但可以正确响应主题
+    // 外边框由外层容器负责（与 Input 等表单项一致），编辑器内部只处理内容样式
     const baseTheme = EditorView.baseTheme({
-      ".cm-editor": {
-        border: "1px solid hsl(var(--border))",
-        borderRadius: "0.5rem",
+      "&": {
+        outline: "none",
+        border: "none",
         background: "transparent",
       },
-      ".cm-editor.cm-focused": {
+      "&.cm-focused": {
         outline: "none",
-        borderColor: "hsl(var(--primary))",
       },
       ".cm-scroller": {
         background: "transparent",
@@ -153,17 +152,16 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
     // 如果启用深色模式，添加深色主题
     if (darkMode) {
       extensions.push(oneDark);
-      // 在 oneDark 之后强制覆盖边框样式
+      // oneDark 之后保持透明背景，边框仍由外层容器绘制
       extensions.push(
         EditorView.theme({
-          ".cm-editor": {
-            border: "1px solid hsl(var(--border))",
-            borderRadius: "0.5rem",
+          "&": {
+            outline: "none",
+            border: "none",
             background: "transparent",
           },
-          ".cm-editor.cm-focused": {
+          "&.cm-focused": {
             outline: "none",
-            borderColor: "hsl(var(--primary))",
           },
           ".cm-scroller": {
             background: "transparent",
@@ -256,11 +254,18 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
       style={{ width: "100%", height: isFullHeight ? "100%" : "auto" }}
       className={isFullHeight ? "flex flex-col" : ""}
     >
+      {/* 与 Input 等表单项一致的外边框（CodeMirror 内部边框在部分主题下不生效） */}
       <div
-        ref={editorRef}
-        style={{ width: "100%", height: isFullHeight ? undefined : "auto" }}
-        className={isFullHeight ? "flex-1 min-h-0" : ""}
-      />
+        className={`${
+          isFullHeight ? "flex-1 min-h-0 flex flex-col" : ""
+        } w-full rounded-md border border-border-default bg-background shadow-sm overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20 dark:focus-within:ring-blue-400/20`}
+      >
+        <div
+          ref={editorRef}
+          style={{ width: "100%", height: isFullHeight ? undefined : "auto" }}
+          className={isFullHeight ? "flex-1 min-h-0" : ""}
+        />
+      </div>
       {language === "json" && (
         <button
           type="button"

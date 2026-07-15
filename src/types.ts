@@ -274,15 +274,13 @@ export interface CodexCatalogModel {
 // Claude 认证字段类型
 export type ClaudeApiKeyField = "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY";
 
-// 主页面显示的应用配置
+// 主页面显示的应用配置（Gemini / OpenClaw / Hermes 已移除）
 export interface VisibleApps {
   claude: boolean;
   "claude-desktop": boolean;
   codex: boolean;
-  gemini: boolean;
   opencode: boolean;
-  openclaw: boolean;
-  hermes: boolean;
+  grok: boolean;
 }
 
 // WebDAV 同步状态
@@ -400,6 +398,8 @@ export interface Settings {
   openclawConfigDir?: string;
   // 覆盖 Hermes 配置目录（可选）
   hermesConfigDir?: string;
+  // 覆盖 Grok Build 配置目录（可选，默认 ~/.grok）
+  grokConfigDir?: string;
 
   // ===== 当前供应商 ID（设备级）=====
   // 当前 Claude 供应商 ID（优先于数据库 is_current）
@@ -487,10 +487,8 @@ export interface McpApps {
   claude: boolean;
   "claude-desktop"?: boolean;
   codex: boolean;
-  gemini: boolean;
   opencode: boolean;
-  openclaw: boolean;
-  hermes: boolean;
+  grok?: boolean;
 }
 
 // MCP 服务器条目（v3.7.0 统一结构）
@@ -533,7 +531,6 @@ export interface McpConfigResponse {
 export interface UniversalProviderApps {
   claude: boolean;
   codex: boolean;
-  gemini: boolean;
 }
 
 // Claude 模型配置
@@ -550,16 +547,10 @@ export interface CodexModelConfig {
   reasoningEffort?: string;
 }
 
-// Gemini 模型配置
-export interface GeminiModelConfig {
-  model?: string;
-}
-
 // 各应用的模型配置
 export interface UniversalProviderModels {
   claude?: ClaudeModelConfig;
   codex?: CodexModelConfig;
-  gemini?: GeminiModelConfig;
 }
 
 // 统一供应商（跨应用共享配置）

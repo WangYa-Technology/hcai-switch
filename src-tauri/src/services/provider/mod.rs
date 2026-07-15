@@ -2065,7 +2065,26 @@ impl ProviderService {
         state: &AppState,
         app_type: AppType,
     ) -> Result<IndexMap<String, Provider>, AppError> {
-        state.db.get_all_providers(app_type.as_str())
+        let mut providers = state.db.get_all_providers(app_type.as_str())?;
+        // One-shot display fix: live-import used to name Grok default "default"
+        if matches!(app_type, AppType::Grok) {
+            if let Some(p) = providers.get_mut("default") {
+                let needs_fix = p.name == "default"
+                    || p.website_url.as_deref().unwrap_or("").is_empty()
+                    || p.icon.as_deref() != Some("grok");
+                if needs_fix {
+                    p.name = "Xai Official".to_string();
+                    p.website_url = Some("https://grok.com/".to_string());
+                    p.icon = Some("grok".to_string());
+                    if p.category.is_none() {
+                        p.category = Some("official".to_string());
+                    }
+                    // Persist so UI stays correct next launch
+                    let _ = state.db.save_provider(app_type.as_str(), p);
+                }
+            }
+        }
+        Ok(providers)
     }
 
     /// Get current provider ID
@@ -2996,6 +3015,7 @@ impl ProviderService {
             AppType::OpenCode => Self::extract_opencode_common_config(&provider.settings_config),
             AppType::OpenClaw => Self::extract_openclaw_common_config(&provider.settings_config),
             AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
+            AppType::Grok => Ok(String::new()),
         }
     }
 
@@ -3012,6 +3032,7 @@ impl ProviderService {
             AppType::OpenCode => Self::extract_opencode_common_config(settings_config),
             AppType::OpenClaw => Self::extract_openclaw_common_config(settings_config),
             AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
+            AppType::Grok => Ok(String::new()),
         }
     }
 
@@ -3511,6 +3532,15 @@ impl ProviderService {
                     ));
                 }
             }
+            AppType::Grok => {
+                if !provider.settings_config.is_object() {
+                    return Err(AppError::localized(
+                        "provider.grok.settings.not_object",
+                        "Grok 配置必须是 JSON 对象（含 auth + config）",
+                        "Grok configuration must be a JSON object (auth + config)",
+                    ));
+                }
+            }
         }
 
         // Validate and clean UsageScript configuration (common for all app types)
@@ -3692,6 +3722,10 @@ impl ProviderService {
                     .to_string();
 
                 Ok((api_key, base_url))
+            }
+            AppType::Grok => {
+                // OIDC or BYOK; no required key for usage probe
+                Ok((String::new(), String::new()))
             }
             AppType::OpenClaw | AppType::Hermes => {
                 // OpenClaw/Hermes use apiKey and baseUrl directly on the object

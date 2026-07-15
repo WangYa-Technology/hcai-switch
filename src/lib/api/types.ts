@@ -3,7 +3,12 @@ export type AppId =
   | "claude"
   | "claude-desktop"
   | "codex"
-  | "gemini"
   | "opencode"
-  | "openclaw"
-  | "hermes";
+  | "grok";
+
+export const isAppId = (app: string): app is AppId =>
+  app === "claude" ||
+  app === "claude-desktop" ||
+  app === "codex" ||
+  app === "opencode" ||
+  app === "grok";

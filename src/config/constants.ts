@@ -13,6 +13,8 @@ export const TEMPLATE_TYPES = {
   TOKEN_PLAN: "token_plan",
   BALANCE: "balance",
   OFFICIAL_SUBSCRIPTION: "official_subscription",
+  /** HCAI 中转站固定用量接口（绝对 URL，校验时按自定义模板放宽同源） */
+  HCAI: "hcai",
 } as const;
 
 export type TemplateType = (typeof TEMPLATE_TYPES)[keyof typeof TEMPLATE_TYPES];

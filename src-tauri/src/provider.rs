@@ -182,6 +182,23 @@ impl Provider {
                     str_at(options.and_then(|o| o.get("apiKey"))),
                 )
             }
+            // Grok: BYOK stores apiKey on settings; base from first model base_url if any
+            AppType::Grok => {
+                let api_key = str_at(settings.get("apiKey"));
+                let config_text = settings.get("config").and_then(|v| v.as_str()).unwrap_or("");
+                // Best-effort base: first base_url = "..." in config.toml
+                let base_url = config_text
+                    .lines()
+                    .find_map(|line| {
+                        let t = line.trim();
+                        t.strip_prefix("base_url")
+                            .and_then(|rest| rest.trim().strip_prefix('='))
+                            .map(|v| v.trim().trim_matches('"').trim_matches('\'').to_string())
+                            .filter(|s| !s.is_empty())
+                    })
+                    .unwrap_or_default();
+                (base_url, api_key)
+            }
             // Claude and Claude Desktop both use the Anthropic-style env map, keeping
             // the OpenRouter/Google key fallbacks the JS-script path relies on.
             // Listed explicitly (not `_`) so a new AppType fails to compile here.

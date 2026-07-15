@@ -7,24 +7,25 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
   Settings,
-  ArrowLeft,
   Minus,
   Maximize2,
   Minimize2,
   X,
   Book,
-  Brain,
   Wrench,
   History,
   BarChart2,
   Download,
   FolderArchive,
   Search,
-  FolderOpen,
-  KeyRound,
-  Shield,
-  Cpu,
-  LayoutDashboard,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Monitor,
+  Terminal,
+  ChevronDown,
+  Bot,
+  Layers,
+  type LucideIcon,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Provider, VisibleApps } from "@/types";
@@ -38,11 +39,7 @@ import {
 } from "@/lib/api";
 import { checkAllEnvConflicts, checkEnvConflicts } from "@/lib/api/env";
 import { useProviderActions } from "@/hooks/useProviderActions";
-import { openclawKeys, useOpenClawHealth } from "@/hooks/useOpenClaw";
-import { hermesKeys, useOpenHermesWebUI } from "@/hooks/useHermes";
-import { hermesApi } from "@/lib/api/hermes";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
-import { useAutoCompact } from "@/hooks/useAutoCompact";
 import { useUsageCacheBridge } from "@/hooks/useUsageCacheBridge";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
 import { useLastValidValue } from "@/hooks/useLastValidValue";
@@ -85,17 +82,14 @@ import { UniversalProviderPanel } from "@/components/universal";
 import { McpIcon } from "@/components/BrandIcons";
 import { Button } from "@/components/ui/button";
 import { SessionManagerPage } from "@/components/sessions/SessionManagerPage";
+import { UsagePage } from "@/components/usage/UsagePage";
 import {
   useDisableCurrentOmo,
   useDisableCurrentOmoSlim,
 } from "@/lib/query/omo";
-import WorkspaceFilesPanel from "@/components/workspace/WorkspaceFilesPanel";
-import EnvPanel from "@/components/openclaw/EnvPanel";
-import ToolsPanel from "@/components/openclaw/ToolsPanel";
-import AgentsDefaultsPanel from "@/components/openclaw/AgentsDefaultsPanel";
-import OpenClawHealthBanner from "@/components/openclaw/OpenClawHealthBanner";
-import HermesMemoryPanel from "@/components/hermes/HermesMemoryPanel";
-
+import appIcon from "@/assets/icons/app-icon.png";
+import { HcaiPanel } from "@/components/hcai/HcaiPanel";
+import { ProviderIcon } from "@/components/ProviderIcon";
 type View =
   | "providers"
   | "settings"
@@ -106,11 +100,8 @@ type View =
   | "agents"
   | "universal"
   | "sessions"
-  | "workspace"
-  | "openclawEnv"
-  | "openclawTools"
-  | "openclawAgents"
-  | "hermesMemory";
+  | "usage"
+  | "hcai";
 
 interface SyncStatusUpdatedPayload {
   source?: string;
@@ -120,22 +111,70 @@ interface SyncStatusUpdatedPayload {
 
 const DEFAULT_DRAG_BAR_HEIGHT = isWindows() || isLinux() ? 0 : 28; // px
 const HEADER_HEIGHT = 64; // px
+const SIDEBAR_WIDTH_EXPANDED = 220; // px — icon + label + section titles
+const SIDEBAR_WIDTH_COLLAPSED = 80; // px — icon only (slightly roomier than 68)
+const SIDEBAR_EXPANDED_KEY = "cc-switch-sidebar-expanded";
+
+/** Header title for the app currently being configured */
+const ACTIVE_APP_META: Record<
+  AppId,
+  { icon: string; name: string; badge?: typeof Terminal; beta?: boolean }
+> = {
+  claude: { icon: "claude", name: "Claude Code", badge: Terminal },
+  "claude-desktop": {
+    icon: "claude",
+    name: "Claude Desktop",
+    badge: Monitor,
+  },
+  codex: { icon: "openai", name: "Codex" },
+  opencode: { icon: "opencode", name: "OpenCode" },
+  grok: { icon: "grok", name: "Grok Build", beta: true },
+};
+
+/** Header icon (replaces back button) for non-provider views — colored */
+const VIEW_HEADER_ICON: Partial<
+  Record<
+    View,
+    { Icon: LucideIcon; className: string } | { kind: "mcp"; className: string }
+  >
+> = {
+  usage: { Icon: BarChart2, className: "text-violet-500 dark:text-violet-400" },
+  skills: { Icon: Wrench, className: "text-amber-500 dark:text-amber-400" },
+  skillsDiscovery: {
+    Icon: Search,
+    className: "text-amber-500 dark:text-amber-400",
+  },
+  prompts: { Icon: Book, className: "text-emerald-500 dark:text-emerald-400" },
+  sessions: {
+    Icon: History,
+    className: "text-fuchsia-500 dark:text-fuchsia-400",
+  },
+  mcp: { kind: "mcp", className: "text-cyan-500 dark:text-cyan-400" },
+  settings: { Icon: Settings, className: "text-sky-500 dark:text-sky-400" },
+  agents: { Icon: Bot, className: "text-rose-500 dark:text-rose-400" },
+  universal: {
+    Icon: Layers,
+    className: "text-indigo-500 dark:text-indigo-400",
+  },
+};
 
 const STORAGE_KEY = "cc-switch-last-app";
 const VALID_APPS: AppId[] = [
   "claude",
   "claude-desktop",
   "codex",
-  "gemini",
   "opencode",
-  "openclaw",
-  "hermes",
+  "grok",
 ];
 
 const getInitialApp = (): AppId => {
   const saved = localStorage.getItem(STORAGE_KEY) as AppId | null;
   if (saved && VALID_APPS.includes(saved)) {
     return saved;
+  }
+  // Migrate away from removed apps (gemini/openclaw/hermes)
+  if (saved) {
+    localStorage.setItem(STORAGE_KEY, "claude");
   }
   return "claude";
 };
@@ -151,11 +190,8 @@ const VALID_VIEWS: View[] = [
   "agents",
   "universal",
   "sessions",
-  "workspace",
-  "openclawEnv",
-  "openclawTools",
-  "openclawAgents",
-  "hermesMemory",
+  "usage",
+  "hcai",
 ];
 
 const getInitialView = (): View => {
@@ -179,39 +215,69 @@ function App() {
   const [settingsDefaultTab, setSettingsDefaultTab] = useState("general");
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(() => {
+    const saved = localStorage.getItem(SIDEBAR_EXPANDED_KEY);
+    // Default expanded; only collapse when user explicitly saved false
+    return saved !== "false";
+  });
+  const sidebarMiddleRef = useRef<HTMLDivElement>(null);
+  const [sidebarCanScrollDown, setSidebarCanScrollDown] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(VIEW_STORAGE_KEY, currentView);
   }, [currentView]);
 
+  // Leave add/edit when navigating away from the provider list (sidebar stays usable)
+  useEffect(() => {
+    if (currentView !== "providers") {
+      setIsAddOpen(false);
+      setEditingProvider(null);
+    }
+  }, [currentView]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      SIDEBAR_EXPANDED_KEY,
+      sidebarExpanded ? "true" : "false",
+    );
+  }, [sidebarExpanded]);
+
   const { data: settingsData } = useSettingsQuery();
   const useAppWindowControls =
     isLinux() && (settingsData?.useAppWindowControls ?? false);
   const dragBarHeight = useAppWindowControls ? 32 : DEFAULT_DRAG_BAR_HEIGHT;
-  const contentTopOffset = dragBarHeight + HEADER_HEIGHT;
+  // Sidebar stays visible on all main views (apps, tools, settings)
+  const showSidebar = true;
+  const sidebarWidth = sidebarExpanded
+    ? SIDEBAR_WIDTH_EXPANDED
+    : SIDEBAR_WIDTH_COLLAPSED;
   const visibleApps: VisibleApps = settingsData?.visibleApps ?? {
     claude: true,
     "claude-desktop": true,
     codex: true,
-    gemini: true,
     opencode: true,
-    openclaw: true,
-    hermes: true,
+    grok: true,
   };
 
   const getFirstVisibleApp = (): AppId => {
     if (visibleApps.claude) return "claude";
     if (visibleApps["claude-desktop"]) return "claude-desktop";
     if (visibleApps.codex) return "codex";
-    if (visibleApps.gemini) return "gemini";
     if (visibleApps.opencode) return "opencode";
-    if (visibleApps.openclaw) return "openclaw";
-    if (visibleApps.hermes) return "hermes";
+    if (visibleApps.grok) return "grok";
     return "claude"; // fallback
   };
 
   useEffect(() => {
-    if (!visibleApps[activeApp]) {
+    const isVisible =
+      activeApp === "claude" ||
+      activeApp === "claude-desktop" ||
+      activeApp === "codex" ||
+      activeApp === "opencode" ||
+      activeApp === "grok"
+        ? visibleApps[activeApp]
+        : false;
+    if (!isVisible) {
       setActiveApp(getFirstVisibleApp());
     }
   }, [visibleApps, activeApp]);
@@ -222,10 +288,7 @@ function App() {
       currentView === "sessions" &&
       sharedFeatureApp !== "claude" &&
       sharedFeatureApp !== "codex" &&
-      sharedFeatureApp !== "opencode" &&
-      sharedFeatureApp !== "openclaw" &&
-      sharedFeatureApp !== "gemini" &&
-      sharedFeatureApp !== "hermes"
+      sharedFeatureApp !== "opencode"
     ) {
       setCurrentView("providers");
     }
@@ -242,9 +305,6 @@ function App() {
 
   const effectiveEditingProvider = useLastValidValue(editingProvider);
   const effectiveUsageProvider = useLastValidValue(usageProvider);
-
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const isToolbarCompact = useAutoCompact(toolbarRef);
 
   useUsageCacheBridge();
 
@@ -272,29 +332,48 @@ function App() {
     return target?.provider_id;
   }, [proxyStatus?.active_targets, activeApp]);
 
+  // Down-arrow hint above the add button when middle content can scroll further
+  useEffect(() => {
+    if (!showSidebar) {
+      setSidebarCanScrollDown(false);
+      return;
+    }
+
+    const el = sidebarMiddleRef.current;
+    if (!el) return;
+
+    const update = () => {
+      // 1px / 2px slack for sub-pixel rounding
+      const canDown =
+        el.scrollHeight > el.clientHeight + 1 &&
+        el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+      setSidebarCanScrollDown(canDown);
+    };
+
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    if (el.firstElementChild) {
+      ro.observe(el.firstElementChild);
+    }
+
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, [showSidebar, sidebarExpanded, activeApp, isCurrentAppTakeoverActive]);
+
   const { data, isLoading, refetch } = useProvidersQuery(activeApp, {
     isProxyRunning,
   });
   const providers = useMemo(() => data?.providers ?? {}, [data]);
   const currentProviderId = data?.currentProviderId ?? "";
-  const isOpenClawView =
-    activeApp === "openclaw" &&
-    (currentView === "providers" ||
-      currentView === "workspace" ||
-      currentView === "sessions" ||
-      currentView === "openclawEnv" ||
-      currentView === "openclawTools" ||
-      currentView === "openclawAgents");
-  const { data: openclawHealthWarnings = [] } =
-    useOpenClawHealth(isOpenClawView);
-  const hasSkillsSupport = sharedFeatureApp !== "openclaw";
+  const hasSkillsSupport = true;
   const hasSessionSupport =
     sharedFeatureApp === "claude" ||
     sharedFeatureApp === "codex" ||
-    sharedFeatureApp === "opencode" ||
-    sharedFeatureApp === "openclaw" ||
-    sharedFeatureApp === "gemini" ||
-    sharedFeatureApp === "hermes";
+    sharedFeatureApp === "opencode";
 
   const {
     addProvider,
@@ -302,7 +381,6 @@ function App() {
     switchProvider,
     deleteProvider,
     saveUsageScript,
-    setAsDefaultModel,
   } = useProviderActions(
     activeApp,
     isProxyRunning,
@@ -619,11 +697,6 @@ function App() {
     };
   }, []);
 
-  const [launchDashboardOpen, setLaunchDashboardOpen] = useState(false);
-  const openHermesWebUI = useOpenHermesWebUI(() =>
-    setLaunchDashboardOpen(true),
-  );
-
   const handleOpenWebsite = async (url: string) => {
     try {
       await settingsApi.openExternal(url);
@@ -653,24 +726,13 @@ function App() {
     const { provider, action } = confirmAction;
 
     if (action === "remove") {
-      // Remove from live config only (for additive mode apps like OpenCode/OpenClaw)
+      // Remove from live config only (for additive mode apps like OpenCode)
       // Does NOT delete from database - provider remains in the list
       await providersApi.removeFromLiveConfig(provider.id, activeApp);
       // Invalidate queries to refresh the isInConfig state
       if (activeApp === "opencode") {
         await queryClient.invalidateQueries({
           queryKey: ["opencodeLiveProviderIds"],
-        });
-      } else if (activeApp === "openclaw") {
-        await queryClient.invalidateQueries({
-          queryKey: openclawKeys.liveProviderIds,
-        });
-        await queryClient.invalidateQueries({
-          queryKey: openclawKeys.health,
-        });
-      } else if (activeApp === "hermes") {
-        await queryClient.invalidateQueries({
-          queryKey: hermesKeys.liveProviderIds,
         });
       }
       toast.success(
@@ -720,28 +782,13 @@ function App() {
       iconColor: provider.iconColor,
     };
 
-    if (
-      activeApp === "opencode" ||
-      activeApp === "openclaw" ||
-      activeApp === "hermes"
-    ) {
+    if (activeApp === "opencode") {
       let liveProviderIds: string[] = [];
       try {
-        liveProviderIds =
-          activeApp === "opencode"
-            ? await queryClient.ensureQueryData({
-                queryKey: ["opencodeLiveProviderIds"],
-                queryFn: () => providersApi.getOpenCodeLiveProviderIds(),
-              })
-            : activeApp === "openclaw"
-              ? await queryClient.ensureQueryData({
-                  queryKey: openclawKeys.liveProviderIds,
-                  queryFn: () => providersApi.getOpenClawLiveProviderIds(),
-                })
-              : await queryClient.ensureQueryData({
-                  queryKey: hermesKeys.liveProviderIds,
-                  queryFn: () => providersApi.getHermesLiveProviderIds(),
-                });
+        liveProviderIds = await queryClient.ensureQueryData({
+          queryKey: ["opencodeLiveProviderIds"],
+          queryFn: () => providersApi.getOpenCodeLiveProviderIds(),
+        });
       } catch (error) {
         console.error(
           "[App] Failed to load live provider IDs for duplication",
@@ -907,25 +954,19 @@ function App() {
               appId={sharedFeatureApp}
             />
           );
-        case "hermesMemory":
-          return <HermesMemoryPanel />;
         case "skills":
           return (
             <UnifiedSkillsPanel
               ref={unifiedSkillsPanelRef}
               onOpenDiscovery={handleOpenSkillsDiscovery}
-              currentApp={
-                sharedFeatureApp === "openclaw" ? "claude" : sharedFeatureApp
-              }
+              currentApp={sharedFeatureApp}
             />
           );
         case "skillsDiscovery":
           return (
             <SkillsPage
               ref={skillsPageRef}
-              initialApp={
-                sharedFeatureApp === "openclaw" ? "claude" : sharedFeatureApp
-              }
+              initialApp={sharedFeatureApp}
               onSourceChange={setSkillsDiscoverySource}
             />
           );
@@ -947,6 +988,14 @@ function App() {
             </div>
           );
 
+        case "hcai":
+          return (
+            <HcaiPanel
+              onProvidersChanged={() => {
+                void refetch();
+              }}
+            />
+          );
         case "sessions":
           return (
             <SessionManagerPage
@@ -954,14 +1003,8 @@ function App() {
               appId={sharedFeatureApp}
             />
           );
-        case "workspace":
-          return <WorkspaceFilesPanel />;
-        case "openclawEnv":
-          return <EnvPanel />;
-        case "openclawTools":
-          return <ToolsPanel />;
-        case "openclawAgents":
-          return <AgentsDefaultsPanel />;
+        case "usage":
+          return <UsagePage />;
         default:
           return (
             <div className="px-6 flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -993,9 +1036,7 @@ function App() {
                         setConfirmAction({ provider, action: "delete" })
                       }
                       onRemoveFromConfig={
-                        activeApp === "opencode" ||
-                        activeApp === "openclaw" ||
-                        activeApp === "hermes"
+                        activeApp === "opencode"
                           ? (provider) =>
                               setConfirmAction({ provider, action: "remove" })
                           : undefined
@@ -1015,13 +1056,6 @@ function App() {
                         activeApp === "claude" ? handleOpenTerminal : undefined
                       }
                       onCreate={() => setIsAddOpen(true)}
-                      onSetAsDefault={
-                        activeApp === "openclaw"
-                          ? setAsDefaultModel
-                          : activeApp === "hermes"
-                            ? switchProvider
-                            : undefined
-                      }
                     />
                   </motion.div>
                 </AnimatePresence>
@@ -1035,7 +1069,7 @@ function App() {
       <AnimatePresence mode="wait">
         <motion.div
           key={currentView}
-          className="flex-1 min-h-0"
+          className="flex flex-1 min-h-0 flex-col overflow-hidden"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -1050,7 +1084,7 @@ function App() {
   return (
     <div
       className="flex flex-col h-screen overflow-hidden bg-background text-foreground selection:bg-primary/30 pb-4"
-      style={{ overflowX: "hidden", paddingTop: contentTopOffset }}
+      style={{ overflowX: "hidden" }}
     >
       {(dragBarHeight > 0 || useAppWindowControls) && (
         <div
@@ -1127,13 +1161,404 @@ function App() {
         />
       )}
 
+      <div className="flex flex-1 min-h-0">
+        {/* Left sidebar: full window height so border-r reaches the top */}
+        {showSidebar && (
+          <aside
+            className={cn(
+              "flex h-full shrink-0 flex-col border-r border-border/60 pb-3 transition-[width] duration-200 ease-in-out overflow-hidden",
+              sidebarExpanded ? "px-2.5 items-stretch" : "px-0 items-center",
+            )}
+            style={{
+              width: sidebarWidth,
+              // Content sits below the fixed title drag bar; border itself is full height
+              paddingTop: dragBarHeight + 12,
+            }}
+          >
+            {/* Brand — pinned top, never scrolls.
+                Collapsed: logo acts as expand control.
+                Expanded: logo+name link + separate collapse button. */}
+            <div
+              className={cn(
+                "flex shrink-0 items-center min-w-0 mb-4",
+                sidebarExpanded
+                  ? "justify-between gap-1 px-1"
+                  : "justify-center",
+              )}
+            >
+              {sidebarExpanded ? (
+                <>
+                  <a
+                    href="https://github.com/WangYa-Technology"
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(
+                      "inline-flex items-center min-w-0 rounded-lg gap-2.5 py-1 pr-1 transition-colors",
+                      isProxyRunning && isCurrentAppTakeoverActive
+                        ? "text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                        : "text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300",
+                    )}
+                    title="HCAI Switch"
+                  >
+                    <img
+                      src={appIcon}
+                      alt="HCAI Switch"
+                      className="h-8 w-8 shrink-0 object-contain"
+                      draggable={false}
+                    />
+                    <span className="text-lg font-semibold tracking-tight truncate">
+                      HCAI Switch
+                    </span>
+                  </a>
+                  {/* Same hit target / hover as collapsed expand control */}
+                  <button
+                    type="button"
+                    onClick={() => setSidebarExpanded(false)}
+                    className="group inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                    title={t("sidebar.collapse")}
+                    aria-label={t("sidebar.collapse")}
+                  >
+                    <PanelLeftClose className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-foreground" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setSidebarExpanded(true)}
+                  className="group relative inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                  title={t("sidebar.expand")}
+                  aria-label={t("sidebar.expand")}
+                >
+                  <img
+                    src={appIcon}
+                    alt="HCAI Switch"
+                    className="h-8 w-8 shrink-0 object-contain transition-opacity duration-150 group-hover:opacity-0"
+                    draggable={false}
+                  />
+                  <PanelLeftOpen className="pointer-events-none absolute h-5 w-5 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover:text-foreground" />
+                </button>
+              )}
+            </div>
+
+            {/* Middle — apps / tools / settings scroll independently */}
+            <div
+              ref={sidebarMiddleRef}
+              className={cn(
+                "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden",
+                sidebarExpanded ? "items-stretch" : "items-center",
+              )}
+            >
+              {/* Apps section */}
+              <div className="flex flex-col gap-1.5 min-w-0">
+                {sidebarExpanded && (
+                  <div className="flex items-center h-7 px-1">
+                    <span className="text-xs font-semibold tracking-wide text-muted-foreground">
+                      {t("sidebar.apps")}
+                    </span>
+                  </div>
+                )}
+
+                {/* HCAI — own group, same selected style as apps */}
+                <div
+                  className={cn(
+                    "bg-muted rounded-xl p-1",
+                    sidebarExpanded ? "w-full" : "flex justify-center",
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setCurrentView("hcai")}
+                    className={cn(
+                      "relative inline-flex items-center rounded-lg transition-all duration-200",
+                      sidebarExpanded
+                        ? "h-11 w-full justify-start gap-2.5 px-3"
+                        : "h-10 w-10 justify-center",
+                      currentView === "hcai"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-background/60",
+                    )}
+                    title={t("hcai.title", { defaultValue: "HCAI 中转站" })}
+                  >
+                    <span className="relative inline-flex shrink-0">
+                      <ProviderIcon icon="hcai" name="HCAI" size={22} />
+                    </span>
+                    {sidebarExpanded && (
+                      <span className="text-sm font-medium truncate text-left">
+                        {t("hcai.brandName", {
+                          defaultValue: "HCAI 中转站",
+                        })}
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                <AppSwitcher
+                  activeApp={activeApp}
+                  onSwitch={(app) => {
+                    setActiveApp(app);
+                    // Always land on that app's provider list (also exits HCAI)
+                    setCurrentView("providers");
+                  }}
+                  visibleApps={visibleApps}
+                  orientation="vertical"
+                  expanded={sidebarExpanded}
+                  highlightActive={currentView === "providers"}
+                />
+              </div>
+
+              {/* Tools section */}
+              <div className="flex flex-col gap-1.5 min-w-0">
+                {sidebarExpanded && (
+                  <div className="flex items-center h-7 px-1">
+                    <span className="text-xs font-semibold tracking-wide text-muted-foreground">
+                      {t("sidebar.tools")}
+                    </span>
+                  </div>
+                )}
+                <div
+                  className={cn(
+                    "flex flex-col gap-1 p-1 bg-muted rounded-xl",
+                    sidebarExpanded ? "w-full" : "items-center",
+                  )}
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCurrentView("usage")}
+                    className={cn(
+                      "h-11",
+                      sidebarExpanded
+                        ? "w-full justify-start gap-2.5 px-3"
+                        : "w-10 p-0 justify-center",
+                      currentView === "usage"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5",
+                    )}
+                    title={t("sidebar.usage")}
+                  >
+                    <BarChart2 className="flex-shrink-0 w-4 h-4" />
+                    {sidebarExpanded && (
+                      <span className="text-sm font-medium truncate">
+                        {t("sidebar.usage")}
+                      </span>
+                    )}
+                  </Button>
+                  {hasSkillsSupport && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCurrentView("skills")}
+                      className={cn(
+                        "h-11",
+                        sidebarExpanded
+                          ? "w-full justify-start gap-2.5 px-3"
+                          : "w-10 p-0 justify-center",
+                        currentView === "skills" ||
+                          currentView === "skillsDiscovery"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5",
+                      )}
+                      title={t("sidebar.skills")}
+                    >
+                      <Wrench className="flex-shrink-0 w-4 h-4" />
+                      {sidebarExpanded && (
+                        <span className="text-sm font-medium truncate">
+                          {t("sidebar.skills")}
+                        </span>
+                      )}
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCurrentView("prompts")}
+                    className={cn(
+                      "h-11",
+                      sidebarExpanded
+                        ? "w-full justify-start gap-2.5 px-3"
+                        : "w-10 p-0 justify-center",
+                      currentView === "prompts"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5",
+                    )}
+                    title={t("sidebar.prompts")}
+                  >
+                    <Book className="w-4 h-4 flex-shrink-0" />
+                    {sidebarExpanded && (
+                      <span className="text-sm font-medium truncate">
+                        {t("sidebar.prompts")}
+                      </span>
+                    )}
+                  </Button>
+                  {hasSessionSupport && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCurrentView("sessions")}
+                      className={cn(
+                        "h-11",
+                        sidebarExpanded
+                          ? "w-full justify-start gap-2.5 px-3"
+                          : "w-10 p-0 justify-center",
+                        currentView === "sessions"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5",
+                      )}
+                      title={t("sidebar.sessions")}
+                    >
+                      <History className="flex-shrink-0 w-4 h-4" />
+                      {sidebarExpanded && (
+                        <span className="text-sm font-medium truncate">
+                          {t("sidebar.sessions")}
+                        </span>
+                      )}
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCurrentView("mcp")}
+                    className={cn(
+                      "h-11",
+                      sidebarExpanded
+                        ? "w-full justify-start gap-2.5 px-3"
+                        : "w-10 p-0 justify-center",
+                      currentView === "mcp"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5",
+                    )}
+                    title={t("sidebar.mcp")}
+                  >
+                    <span className="flex-shrink-0 inline-flex">
+                      <McpIcon size={16} />
+                    </span>
+                    {sidebarExpanded && (
+                      <span className="text-sm font-medium truncate">
+                        {t("sidebar.mcp")}
+                      </span>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Settings section */}
+              <div className="flex flex-col gap-1.5 min-w-0">
+                {sidebarExpanded && (
+                  <div className="flex items-center h-7 px-1">
+                    <span className="text-xs font-semibold tracking-wide text-muted-foreground">
+                      {t("sidebar.settings")}
+                    </span>
+                  </div>
+                )}
+                <div
+                  className={cn(
+                    "flex flex-col gap-1 p-1 bg-muted rounded-xl",
+                    sidebarExpanded ? "w-full" : "items-center",
+                  )}
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSettingsDefaultTab("general");
+                      setCurrentView("settings");
+                    }}
+                    className={cn(
+                      "h-11",
+                      sidebarExpanded
+                        ? "w-full justify-start gap-2.5 px-3"
+                        : "w-10 p-0 justify-center",
+                      currentView === "settings" &&
+                        settingsDefaultTab !== "about"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5",
+                    )}
+                    title={t("sidebar.openSettings")}
+                  >
+                    <Settings className="flex-shrink-0 w-4 h-4" />
+                    {sidebarExpanded && (
+                      <span className="text-sm font-medium truncate">
+                        {t("sidebar.openSettings")}
+                      </span>
+                    )}
+                  </Button>
+                  <UpdateBadge
+                    showLabel={sidebarExpanded}
+                    onClick={() => {
+                      setSettingsDefaultTab("about");
+                      setCurrentView("settings");
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Scroll hint + Add provider — pinned bottom, never scrolls */}
+            <div
+              className={cn(
+                "shrink-0 pt-1 pb-1 flex flex-col items-center gap-1",
+                sidebarExpanded ? "w-full" : "",
+              )}
+            >
+              <AnimatePresence>
+                {sidebarCanScrollDown && (
+                  <motion.button
+                    type="button"
+                    key="sidebar-scroll-hint"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    onClick={() => {
+                      const el = sidebarMiddleRef.current;
+                      if (!el) return;
+                      el.scrollBy({ top: 80, behavior: "smooth" });
+                    }}
+                    className="flex h-6 w-full items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                    title={t("sidebar.scrollMore", {
+                      defaultValue: "向下滚动查看更多",
+                    })}
+                    aria-label={t("sidebar.scrollMore", {
+                      defaultValue: "向下滚动查看更多",
+                    })}
+                  >
+                    <ChevronDown className="h-4 w-4 animate-bounce" />
+                  </motion.button>
+                )}
+              </AnimatePresence>
+              <Button
+                onClick={() => setIsAddOpen(true)}
+                size={sidebarExpanded ? "sm" : "icon"}
+                className={cn(
+                  addActionButtonClass,
+                  sidebarExpanded &&
+                    "w-full rounded-full h-10 gap-1.5 px-3 shadow-lg shadow-orange-500/30",
+                )}
+                title={t("sidebar.addProvider")}
+              >
+                <Plus className="w-4 h-4 flex-shrink-0" />
+                {sidebarExpanded && (
+                  <span className="text-sm font-medium whitespace-nowrap">
+                    {t("sidebar.addProvider")}
+                  </span>
+                )}
+              </Button>
+            </div>
+          </aside>
+        )}
+
+        {/* Right column: header + main content */}
+        <div
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
+          style={{ paddingTop: dragBarHeight }}
+        >
+      {currentView !== "hcai" && (
       <header
-        className="fixed z-50 w-full transition-all duration-300 bg-background/80 backdrop-blur-md"
+        className="z-50 w-full shrink-0 transition-all duration-300 bg-background/80 backdrop-blur-md"
         {...DRAG_REGION_ATTR}
         style={
           {
             ...DRAG_REGION_STYLE,
-            top: dragBarHeight,
             height: HEADER_HEIGHT,
           } as any
         }
@@ -1147,24 +1572,63 @@ function App() {
             className="flex items-center gap-1"
             style={{ WebkitAppRegion: "no-drag" } as any}
           >
-            {currentView !== "providers" ? (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() =>
-                    setCurrentView(
-                      currentView === "skillsDiscovery"
-                        ? "skills"
-                        : "providers",
-                    )
+            {currentView === "providers" ? (
+              (() => {
+                const meta = ACTIVE_APP_META[activeApp];
+                const BadgeIcon = meta.badge;
+                return (
+                  <div className="flex items-center gap-2.5">
+                    <span className="relative inline-flex shrink-0">
+                      <ProviderIcon
+                        icon={meta.icon}
+                        name={meta.name}
+                        size={22}
+                      />
+                      {BadgeIcon ? (
+                        <span className="absolute -bottom-0.5 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-background bg-muted">
+                          <BadgeIcon className="h-2 w-2" />
+                        </span>
+                      ) : null}
+                    </span>
+                    <h1 className="text-lg font-semibold tracking-tight flex items-center gap-2">
+                      {meta.name}
+                      {meta.beta ? (
+                        <span className="beta-badge" aria-label="Beta">
+                          Beta
+                        </span>
+                      ) : null}
+                    </h1>
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="flex items-center gap-2.5">
+                {(() => {
+                  const meta = VIEW_HEADER_ICON[currentView];
+                  if (!meta) return null;
+                  if ("kind" in meta) {
+                    return (
+                      <span
+                        className={cn(
+                          "inline-flex shrink-0 items-center justify-center",
+                          meta.className,
+                        )}
+                      >
+                        <McpIcon size={22} />
+                      </span>
+                    );
                   }
-                  className="mr-2 rounded-lg"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </Button>
-                <h1 className="text-lg font-semibold">
+                  const Icon = meta.Icon;
+                  return (
+                    <Icon
+                      className={cn("h-[22px] w-[22px] shrink-0", meta.className)}
+                      strokeWidth={2}
+                    />
+                  );
+                })()}
+                <h1 className="text-lg font-semibold tracking-tight">
                   {currentView === "settings" && t("settings.title")}
+                  {currentView === "usage" && t("usage.title")}
                   {currentView === "prompts" &&
                     t("prompts.title", {
                       appName: t(`apps.${sharedFeatureApp}`),
@@ -1178,65 +1642,7 @@ function App() {
                       defaultValue: "统一供应商",
                     })}
                   {currentView === "sessions" && t("sessionManager.title")}
-                  {currentView === "workspace" && t("workspace.title")}
-                  {currentView === "openclawEnv" && t("openclaw.env.title")}
-                  {currentView === "openclawTools" && t("openclaw.tools.title")}
-                  {currentView === "openclawAgents" &&
-                    t("openclaw.agents.title")}
-                  {currentView === "hermesMemory" && t("hermes.memory.title")}
                 </h1>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="relative inline-flex items-center">
-                  <a
-                    href="https://ccswitch.io"
-                    target="_blank"
-                    rel="noreferrer"
-                    className={cn(
-                      "text-xl font-semibold transition-colors",
-                      isProxyRunning && isCurrentAppTakeoverActive
-                        ? "text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
-                        : "text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300",
-                    )}
-                  >
-                    CC Switch
-                  </a>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setSettingsDefaultTab("general");
-                    setCurrentView("settings");
-                  }}
-                  title={t("common.settings")}
-                  className="hover:bg-black/5 dark:hover:bg-white/5"
-                >
-                  <Settings className="w-4 h-4" />
-                </Button>
-                <UpdateBadge
-                  onClick={() => {
-                    setSettingsDefaultTab("about");
-                    setCurrentView("settings");
-                  }}
-                />
-                {isCurrentAppTakeoverActive && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      setSettingsDefaultTab("usage");
-                      setCurrentView("settings");
-                    }}
-                    title={t("usage.title", {
-                      defaultValue: "使用统计",
-                    })}
-                    className="hover:bg-black/5 dark:hover:bg-white/5"
-                  >
-                    <BarChart2 className="w-4 h-4" />
-                  </Button>
-                )}
               </div>
             )}
           </div>
@@ -1244,8 +1650,7 @@ function App() {
           <div className="flex flex-1 min-w-0 items-center justify-end gap-1.5">
             {currentView === "providers" &&
               activeApp !== "opencode" &&
-              activeApp !== "openclaw" &&
-              activeApp !== "hermes" && (
+              activeApp !== "grok" && (
                 <div
                   className="flex shrink-0 items-center gap-1.5"
                   style={{ WebkitAppRegion: "no-drag" } as any}
@@ -1272,12 +1677,9 @@ function App() {
                   <ProfileSwitcher activeApp={activeApp} />
                 </div>
               )}
-            <div
-              ref={toolbarRef}
-              className="flex flex-1 min-w-0 overflow-x-hidden items-center py-4 pr-2"
-            >
+            <div className="flex shrink-0 items-center gap-1.5 py-4 pr-2">
               <div
-                className="flex shrink-0 items-center gap-1.5 ml-auto"
+                className="flex shrink-0 items-center gap-1.5"
                 style={{ WebkitAppRegion: "no-drag" } as any}
               >
                 {currentView === "prompts" && (
@@ -1388,201 +1790,26 @@ function App() {
                     )}
                   </>
                 )}
-                {currentView === "providers" && (
-                  <>
-                    <AppSwitcher
-                      activeApp={activeApp}
-                      onSwitch={setActiveApp}
-                      visibleApps={visibleApps}
-                      compact={isToolbarCompact}
-                    />
-
-                    <div className="flex items-center gap-1 p-1 bg-muted rounded-xl">
-                      <AnimatePresence mode="wait">
-                        <motion.div
-                          key={
-                            activeApp === "openclaw"
-                              ? "openclaw"
-                              : activeApp === "hermes"
-                                ? "hermes"
-                                : "default"
-                          }
-                          className="flex items-center gap-1"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: 0.15 }}
-                        >
-                          {activeApp === "hermes" ? (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("skills")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("skills.manage")}
-                              >
-                                <Wrench className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("hermesMemory")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("hermes.memory.title")}
-                              >
-                                <Brain className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => void openHermesWebUI()}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("hermes.webui.open")}
-                              >
-                                <LayoutDashboard className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("mcp")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("mcp.title")}
-                              >
-                                <McpIcon size={16} />
-                              </Button>
-                            </>
-                          ) : activeApp === "openclaw" ? (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("workspace")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("workspace.manage")}
-                              >
-                                <FolderOpen className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("openclawEnv")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("openclaw.env.title")}
-                              >
-                                <KeyRound className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("openclawTools")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("openclaw.tools.title")}
-                              >
-                                <Shield className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("openclawAgents")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("openclaw.agents.title")}
-                              >
-                                <Cpu className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("sessions")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("sessionManager.title")}
-                              >
-                                <History className="w-4 h-4" />
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("skills")}
-                                className={cn(
-                                  "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5",
-                                  "transition-all duration-200 ease-in-out overflow-hidden",
-                                  hasSkillsSupport
-                                    ? "opacity-100 w-8 scale-100 px-2"
-                                    : "opacity-0 w-0 scale-75 pointer-events-none px-0 -ml-1",
-                                )}
-                                title={t("skills.manage")}
-                              >
-                                <Wrench className="flex-shrink-0 w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("prompts")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("prompts.manage")}
-                              >
-                                <Book className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("sessions")}
-                                className={cn(
-                                  "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5",
-                                  "transition-all duration-200 ease-in-out overflow-hidden",
-                                  hasSessionSupport
-                                    ? "opacity-100 w-8 scale-100 px-2"
-                                    : "opacity-0 w-0 scale-75 pointer-events-none px-0 -ml-1",
-                                )}
-                                title={t("sessionManager.title")}
-                              >
-                                <History className="flex-shrink-0 w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("mcp")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("mcp.title")}
-                              >
-                                <McpIcon size={16} />
-                              </Button>
-                            </>
-                          )}
-                        </motion.div>
-                      </AnimatePresence>
-                    </div>
-
-                    <Button
-                      onClick={() => setIsAddOpen(true)}
-                      size="icon"
-                      className={`ml-2 ${addActionButtonClass}`}
-                    >
-                      <Plus className="w-5 h-5" />
-                    </Button>
-                  </>
-                )}
               </div>
             </div>
           </div>
         </div>
       </header>
+      )}
 
-      <main className="flex-1 min-h-0 flex flex-col overflow-y-auto animate-fade-in">
-        {isOpenClawView && openclawHealthWarnings.length > 0 && (
-          <OpenClawHealthBanner warnings={openclawHealthWarnings} />
-        )}
-        {renderContent()}
-      </main>
+          <main className="flex flex-1 min-h-0 flex-col overflow-hidden animate-fade-in">
+            {renderContent()}
+          </main>
+        </div>
+      </div>
 
       <AddProviderDialog
         open={isAddOpen}
         onOpenChange={setIsAddOpen}
         appId={activeApp}
         onSubmit={addProvider}
+        leftOffset={sidebarWidth}
+        topOffset={dragBarHeight}
       />
 
       <EditProviderDialog
@@ -1596,6 +1823,8 @@ function App() {
         onSubmit={handleEditProvider}
         appId={activeApp}
         isProxyTakeover={isCurrentAppTakeoverActive}
+        leftOffset={sidebarWidth}
+        topOffset={dragBarHeight}
       />
 
       {effectiveUsageProvider && (
@@ -1633,28 +1862,6 @@ function App() {
         }
         onConfirm={() => void handleConfirmAction()}
         onCancel={() => setConfirmAction(null)}
-      />
-
-      <ConfirmDialog
-        isOpen={launchDashboardOpen}
-        title={t("hermes.webui.launchConfirmTitle")}
-        message={t("hermes.webui.launchConfirmMessage")}
-        confirmText={t("hermes.webui.launchConfirmAction")}
-        variant="info"
-        onConfirm={() => {
-          setLaunchDashboardOpen(false);
-          void (async () => {
-            try {
-              await hermesApi.launchDashboard();
-              toast.success(t("hermes.webui.launching"));
-            } catch (error) {
-              toast.error(t("hermes.webui.launchFailed"), {
-                description: extractErrorMessage(error) || undefined,
-              });
-            }
-          })();
-        }}
-        onCancel={() => setLaunchDashboardOpen(false)}
       />
 
       <DeepLinkImportDialog />

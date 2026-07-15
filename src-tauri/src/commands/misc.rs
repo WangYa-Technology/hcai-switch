@@ -56,7 +56,7 @@ pub async fn check_for_updates(handle: AppHandle) -> Result<bool, String> {
     handle
         .opener()
         .open_url(
-            "https://github.com/farion1231/cc-switch/releases/latest",
+            "https://github.com/HeLongaa/hcai-switch/releases/latest",
             None::<String>,
         )
         .map_err(|e| format!("打开更新页面失败: {e}"))?;
@@ -111,8 +111,8 @@ pub struct ToolVersion {
     wsl_distro: Option<String>,
 }
 
-const VALID_TOOLS: [&str; 6] = [
-    "claude", "codex", "gemini", "opencode", "openclaw", "hermes",
+const VALID_TOOLS: [&str; 7] = [
+    "claude", "codex", "gemini", "opencode", "openclaw", "hermes", "grok",
 ];
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -427,6 +427,7 @@ fn tool_display_name(tool: &str) -> &'static str {
         "opencode" => "OpenCode",
         "openclaw" => "OpenClaw",
         "hermes" => "Hermes",
+        "grok" => "Grok Build",
         _ => "Unknown",
     }
 }
@@ -440,6 +441,11 @@ const CLAUDE_INSTALL_UNIX: &str =
     "bash -c 'tmp=$(mktemp) && curl -fsSL https://claude.ai/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
 const OPENCODE_INSTALL_UNIX: &str =
     "bash -c 'tmp=$(mktemp) && curl -fsSL https://opencode.ai/install -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
+/// Grok Build 官方 CLI：原生二进制，无 npm 包；装到 `~/.grok/bin`（并常链到 `~/.local/bin`）。
+const GROK_INSTALL_UNIX: &str =
+    "bash -c 'tmp=$(mktemp) && curl -fsSL https://x.ai/cli/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
+const GROK_UPDATE_UNIX: &str =
+    "grok update || bash -c 'tmp=$(mktemp) && curl -fsSL https://x.ai/cli/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
 
 /// Hermes 官方安装器会自带/选择合适的 Python 运行时。不要再用
 /// `python3 -m pip ... || python -m pip ...`:Hermes PyPI 包要求 Python >=3.11,
@@ -500,7 +506,7 @@ fn npm_install_command_for(tool: &str) -> Option<&'static str> {
 
 fn official_update_args(tool: &str) -> Option<&'static str> {
     match tool {
-        "claude" | "codex" | "hermes" => Some("update"),
+        "claude" | "codex" | "hermes" | "grok" => Some("update"),
         "openclaw" => Some("update --yes"),
         "opencode" => Some("upgrade"),
         _ => None,
@@ -550,6 +556,15 @@ fn tool_action_shell_command_for_shell(
             }
             .to_string(),
         );
+    }
+
+    // Grok Build：原生二进制 + 官方 install.sh，无 npm 包。Windows 官方也走 bash
+    //（Git Bash / MSYS）；无独立 .ps1，故 Windows batch 与 POSIX 共用同一套命令。
+    if tool == "grok" {
+        return Some(match action {
+            ToolLifecycleAction::Install => GROK_INSTALL_UNIX.to_string(),
+            ToolLifecycleAction::Update => GROK_UPDATE_UNIX.to_string(),
+        });
     }
 
     let install = npm_install_command_for(tool)?;
@@ -773,6 +788,7 @@ async fn get_single_tool_version_impl(
         }
         "openclaw" => fetch_npm_latest_for_tool(&client, "openclaw", tool, local).await,
         "hermes" => fetch_pypi_latest_version(&client, "hermes-agent").await,
+        "grok" => fetch_grok_latest_version(&client).await,
         _ => None,
     };
 
@@ -937,6 +953,36 @@ async fn fetch_github_latest_version(client: &reqwest::Client, repo: &str) -> Op
         }
         Err(_) => None,
     }
+}
+
+/// Grok Build CLI 最新版：官方 channel 指针为纯文本版本号（与 install.sh 一致）。
+/// 主站 Cloudflare 不可达时回落 GCS 公共产物。
+async fn fetch_grok_latest_version(client: &reqwest::Client) -> Option<String> {
+    const URLS: &[&str] = &[
+        "https://x.ai/cli/stable",
+        "https://storage.googleapis.com/grok-build-public-artifacts/cli/stable",
+    ];
+    for url in URLS {
+        let Ok(resp) = client.get(*url).send().await else {
+            continue;
+        };
+        if !resp.status().is_success() {
+            continue;
+        }
+        let Ok(text) = resp.text().await else {
+            continue;
+        };
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // 指针文件应是 "0.2.101" 一类；用 extract_version 兼容意外前后缀
+        let version = extract_version(trimmed);
+        if VERSION_RE.is_match(&version) {
+            return Some(version);
+        }
+    }
+    None
 }
 
 /// Helper function to fetch latest version from PyPI
@@ -1493,6 +1539,10 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
     let mut search_paths: Vec<std::path::PathBuf> = Vec::new();
     if !home.as_os_str().is_empty() {
         push_unique_path(&mut search_paths, home.join(".local/bin"));
+        // Grok Build 官方 install.sh 默认 BIN_DIR=$HOME/.grok/bin
+        if tool == "grok" {
+            push_unique_path(&mut search_paths, home.join(".grok").join("bin"));
+        }
         push_unique_path(&mut search_paths, home.join(".npm-global/bin"));
         push_unique_path(&mut search_paths, home.join("n/bin"));
         push_unique_path(&mut search_paths, home.join(".volta/bin"));
@@ -2121,7 +2171,7 @@ fn anchored_official_update_command(tool: &str, bin_path: &str) -> Option<String
 fn prefers_official_update(tool: &str, shell: LifecycleCommandShell) -> bool {
     match shell {
         LifecycleCommandShell::Posix => {
-            matches!(tool, "claude" | "opencode" | "openclaw")
+            matches!(tool, "claude" | "opencode" | "openclaw" | "grok")
         }
         LifecycleCommandShell::WindowsBatch => {
             matches!(
@@ -2130,7 +2180,8 @@ fn prefers_official_update(tool: &str, shell: LifecycleCommandShell) -> bool {
                 // 安装方式探测失败弹交互 prompt（spawn npm.cmd 没传 shell:true）；静默
                 // lifecycle 没有 stdin 会挂死，Windows 先锚到包管理器路径，等上游修了
                 // 再把 opencode 加回这里。
-                "claude" | "openclaw"
+                // Grok 为原生二进制 self-update（`grok update`），无 npm 路径可锚。
+                "claude" | "openclaw" | "grok"
             )
         }
     }
@@ -2253,7 +2304,8 @@ fn package_manager_anchored_command_from_paths(
 fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) -> Option<String> {
     let real_lower = real_target.to_ascii_lowercase();
 
-    if tool == "hermes" {
+    // Hermes / Grok：原生 CLI self-update，无 npm 包可锚
+    if tool == "hermes" || tool == "grok" {
         return anchored_official_update_command(tool, bin_path);
     }
     if tool == "claude"
@@ -2336,7 +2388,8 @@ fn package_manager_anchored_command_from_paths(tool: &str, bin_path: &str) -> Op
 /// 才返 None 让上游兜回静态命令、`anchored=false`。
 #[cfg(target_os = "windows")]
 fn anchored_command_from_paths(tool: &str, bin_path: &str, _real_target: &str) -> Option<String> {
-    if tool == "hermes" {
+    // Hermes / Grok：原生 CLI self-update，无 npm 包可锚
+    if tool == "hermes" || tool == "grok" {
         return anchored_official_update_command(tool, bin_path);
     }
     let package_command = package_manager_anchored_command_from_paths(tool, bin_path);
@@ -2436,6 +2489,7 @@ fn posix_install_command_for(tool: &str) -> String {
         "claude" => installer_with_npm_fallback(CLAUDE_INSTALL_UNIX, tool),
         "opencode" => installer_with_npm_fallback(OPENCODE_INSTALL_UNIX, tool),
         "hermes" => HERMES_INSTALL_UNIX.to_string(),
+        "grok" => GROK_INSTALL_UNIX.to_string(),
         _ => static_fallback_command_for(tool, ToolLifecycleAction::Install),
     }
 }
@@ -2547,6 +2601,7 @@ fn wsl_distro_for_tool(tool: &str) -> Option<String> {
         "opencode" => crate::settings::get_opencode_override_dir(),
         "openclaw" => crate::settings::get_openclaw_override_dir(),
         "hermes" => crate::settings::get_hermes_override_dir(),
+        "grok" => crate::settings::get_grok_override_dir(),
         _ => None,
     }?;
 
@@ -4870,6 +4925,39 @@ mod tests {
                 !cmd.contains('|') && !cmd.contains("python") && !cmd.contains("pip"),
                 "should not depend on pipefail or system Python/pip: {cmd}"
             );
+        }
+
+        #[test]
+        fn grok_install_uses_official_installer_without_npm() {
+            // Grok Build 官方 install.sh 装原生二进制到 ~/.grok/bin；无 npm 包可兜底。
+            let cmd = install_command_for("grok");
+            assert!(
+                cmd.contains("https://x.ai/cli/install.sh"),
+                "should include official installer URL: {cmd}"
+            );
+            assert!(
+                cmd.starts_with("bash -c 'tmp=$(mktemp) && curl -fsSL ")
+                    && cmd.contains("install.sh -o $tmp && bash $tmp"),
+                "should use mktemp install pattern: {cmd}"
+            );
+            assert!(
+                !cmd.contains("npm") && !cmd.contains('|'),
+                "should not use npm or pipe install: {cmd}"
+            );
+        }
+
+        #[test]
+        fn grok_update_prefers_cli_self_update_with_installer_fallback() {
+            let cmd = static_fallback_command("grok");
+            assert!(
+                cmd.starts_with("grok update || "),
+                "should prefer grok update first: {cmd}"
+            );
+            assert!(
+                cmd.contains("https://x.ai/cli/install.sh"),
+                "should fall back to official installer: {cmd}"
+            );
+            assert!(!cmd.contains("npm"), "no npm package for grok: {cmd}");
         }
 
         #[test]

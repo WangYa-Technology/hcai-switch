@@ -11,6 +11,16 @@ use crate::services::{
 use crate::store::AppState;
 use std::str::FromStr;
 
+fn parse_managed_app(app: &str) -> Result<AppType, String> {
+    let app_type = AppType::from_str(app).map_err(|e| e.to_string())?;
+    if !app_type.is_managed() {
+        return Err(format!(
+            "App '{app}' is no longer supported for provider configuration"
+        ));
+    }
+    Ok(app_type)
+}
+
 // 常量定义
 const TEMPLATE_TYPE_GITHUB_COPILOT: &str = "github_copilot";
 const TEMPLATE_TYPE_TOKEN_PLAN: &str = "token_plan";
@@ -24,13 +34,13 @@ pub fn get_providers(
     state: State<'_, AppState>,
     app: String,
 ) -> Result<IndexMap<String, Provider>, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let app_type = parse_managed_app(&app)?;
     ProviderService::list(state.inner(), app_type).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn get_current_provider(state: State<'_, AppState>, app: String) -> Result<String, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let app_type = parse_managed_app(&app)?;
     ProviderService::current(state.inner(), app_type).map_err(|e| e.to_string())
 }
 
@@ -41,7 +51,7 @@ pub fn add_provider(
     provider: Provider,
     #[allow(non_snake_case)] addToLive: Option<bool>,
 ) -> Result<bool, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let app_type = parse_managed_app(&app)?;
     ProviderService::add(state.inner(), app_type, provider, addToLive.unwrap_or(true))
         .map_err(|e| e.to_string())
 }
@@ -53,7 +63,7 @@ pub fn update_provider(
     provider: Provider,
     #[allow(non_snake_case)] originalId: Option<String>,
 ) -> Result<bool, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let app_type = parse_managed_app(&app)?;
     ProviderService::update(state.inner(), app_type, originalId.as_deref(), provider)
         .map_err(|e| e.to_string())
 }
@@ -64,7 +74,7 @@ pub fn delete_provider(
     app: String,
     id: String,
 ) -> Result<bool, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let app_type = parse_managed_app(&app)?;
     ProviderService::delete(state.inner(), app_type, &id)
         .map(|_| true)
         .map_err(|e| e.to_string())
@@ -105,7 +115,7 @@ pub fn switch_provider(
     app: String,
     id: String,
 ) -> Result<SwitchResult, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let app_type = parse_managed_app(&app)?;
     switch_provider_internal(&state, app_type, &id).map_err(|e| e.to_string())
 }
 
@@ -737,7 +747,7 @@ pub fn add_custom_endpoint(
     #[allow(non_snake_case)] providerId: String,
     url: String,
 ) -> Result<(), String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let app_type = parse_managed_app(&app)?;
     ProviderService::add_custom_endpoint(state.inner(), app_type, &providerId, url)
         .map_err(|e| e.to_string())
 }
@@ -761,7 +771,7 @@ pub fn update_endpoint_last_used(
     #[allow(non_snake_case)] providerId: String,
     url: String,
 ) -> Result<(), String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let app_type = parse_managed_app(&app)?;
     ProviderService::update_endpoint_last_used(state.inner(), app_type, &providerId, url)
         .map_err(|e| e.to_string())
 }
@@ -772,7 +782,7 @@ pub fn update_providers_sort_order(
     app: String,
     updates: Vec<ProviderSortUpdate>,
 ) -> Result<bool, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let app_type = parse_managed_app(&app)?;
     ProviderService::update_sort_order(state.inner(), app_type, updates).map_err(|e| e.to_string())
 }
 

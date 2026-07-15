@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { cn } from "@/lib/utils";
 import {
   Copy,
   RefreshCw,
@@ -80,14 +81,7 @@ const SESSION_LIST_VIEW_MODE_STORAGE_KEY =
 const SESSION_GROUP_EXPANSION_STORAGE_KEY =
   "cc-switch.sessionManager.groupExpansionState";
 
-type ProviderFilter =
-  | "all"
-  | "codex"
-  | "claude"
-  | "opencode"
-  | "openclaw"
-  | "gemini"
-  | "hermes";
+type ProviderFilter = "all" | "codex" | "claude" | "opencode";
 
 type SessionListViewMode = "flat" | "grouped";
 
@@ -794,13 +788,13 @@ export function SessionManagerPage({ appId }: { appId: string }) {
       >
         <div className="flex-1 overflow-hidden flex flex-col gap-4">
           {/* 主内容区域 - 左右分栏 */}
-          <div className="flex-1 overflow-hidden grid gap-4 md:grid-cols-[320px_1fr]">
+          <div className="flex-1 overflow-hidden grid gap-4 min-w-0 md:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
             {/* 左侧会话列表 */}
-            <Card className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <Card className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
               <CardHeader className="py-2 px-3 border-b">
                 {isSearchOpen ? (
-                  <div className="flex items-center gap-2">
-                    <div className="relative flex-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="relative flex-1 min-w-0">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                       <Input
                         ref={searchInputRef}
@@ -839,7 +833,7 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                           <Button
                             variant="secondary"
                             size="icon"
-                            className="size-7 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60"
+                            className="size-7 shrink-0 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60"
                             aria-label={t(
                               "sessionManager.exitBatchModeTooltip",
                               {
@@ -860,8 +854,8 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                     )}
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-2 min-w-0">
+                    <div className="flex flex-wrap items-center justify-between gap-2 min-w-0">
                       <div className="flex items-center gap-2 min-w-0">
                         <CardTitle className="text-sm font-medium whitespace-nowrap">
                           {t("sessionManager.sessionList")}
@@ -870,19 +864,19 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                           {filteredSessions.length}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex flex-wrap items-center gap-1 shrink-0 rounded-lg border border-border/70 bg-muted/40 p-0.5">
                         {(selectionMode ||
                           deletableFilteredSessions.length > 0) && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
-                                variant={selectionMode ? "secondary" : "ghost"}
+                                variant="ghost"
                                 size="icon"
-                                className={
-                                  selectionMode
-                                    ? "size-7 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60"
-                                    : "size-7"
-                                }
+                                className={cn(
+                                  "size-8 rounded-md text-muted-foreground hover:bg-background hover:text-foreground hover:shadow-sm",
+                                  selectionMode &&
+                                    "bg-background text-blue-600 shadow-sm hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200",
+                                )}
                                 aria-label={
                                   selectionMode
                                     ? t("sessionManager.exitBatchModeTooltip", {
@@ -900,7 +894,7 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                                   }
                                 }}
                               >
-                                <CheckSquare className="size-3.5" />
+                                <CheckSquare className="size-4" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -923,7 +917,7 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <SelectTrigger
-                                className="size-7 p-0 justify-center border-0 bg-transparent hover:bg-muted"
+                                className="size-8 shrink-0 gap-0 border-0 bg-transparent p-0 justify-center text-muted-foreground shadow-none hover:bg-background hover:text-foreground hover:shadow-sm focus:ring-0 [&>svg:last-child]:hidden"
                                 aria-label={t(
                                   "sessionManager.viewModeTooltip",
                                   {
@@ -937,9 +931,9 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                                   })}
                                 </span>
                                 {listViewMode === "grouped" ? (
-                                  <ListTree className="size-3.5" />
+                                  <ListTree className="size-4" />
                                 ) : (
-                                  <List className="size-3.5" />
+                                  <List className="size-4" />
                                 )}
                               </SelectTrigger>
                             </TooltipTrigger>
@@ -974,7 +968,7 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="size-7"
+                                className="size-8 rounded-md text-muted-foreground hover:bg-background hover:text-foreground hover:shadow-sm"
                                 aria-label={t(
                                   "sessionManager.collapseAllGroups",
                                   {
@@ -983,7 +977,7 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                                 )}
                                 onClick={handleCollapseAllGroups}
                               >
-                                <ChevronsDownUp className="size-3.5" />
+                                <ChevronsDownUp className="size-4" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -998,7 +992,7 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="size-7"
+                              className="size-8 rounded-md text-muted-foreground hover:bg-background hover:text-foreground hover:shadow-sm"
                               onClick={() => {
                                 setIsSearchOpen(true);
                                 setTimeout(
@@ -1007,7 +1001,7 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                                 );
                               }}
                             >
-                              <Search className="size-3.5" />
+                              <Search className="size-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -1024,7 +1018,7 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <SelectTrigger
-                                className="size-7 p-0 justify-center border-0 bg-transparent hover:bg-muted"
+                                className="size-8 shrink-0 gap-0 border-0 bg-transparent p-0 justify-center shadow-none hover:bg-background hover:shadow-sm focus:ring-0 [&>svg:last-child]:hidden"
                                 aria-label={t(
                                   "sessionManager.providerFilterTooltip",
                                   {
@@ -1044,7 +1038,7 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                                       : getProviderIconName(providerFilter)
                                   }
                                   name={providerFilter}
-                                  size={14}
+                                  size={16}
                                 />
                               </SelectTrigger>
                             </TooltipTrigger>
@@ -1097,26 +1091,6 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                                 <span>OpenCode</span>
                               </div>
                             </SelectItem>
-                            <SelectItem value="openclaw">
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon
-                                  icon="openclaw"
-                                  name="openclaw"
-                                  size={14}
-                                />
-                                <span>OpenClaw</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="gemini">
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon
-                                  icon="gemini"
-                                  name="gemini"
-                                  size={14}
-                                />
-                                <span>Gemini CLI</span>
-                              </div>
-                            </SelectItem>
                           </SelectContent>
                         </Select>
 
@@ -1125,10 +1099,10 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="size-7"
+                              className="size-8 rounded-md text-muted-foreground hover:bg-background hover:text-foreground hover:shadow-sm"
                               onClick={() => void refetch()}
                             >
-                              <RefreshCw className="size-3.5" />
+                              <RefreshCw className="size-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>{t("common.refresh")}</TooltipContent>

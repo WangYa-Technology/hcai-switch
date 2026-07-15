@@ -62,8 +62,9 @@ const normalizeRefreshInterval = (value: number | undefined) =>
 const APP_FILTER_ICON: Record<AppType, string> = {
   claude: "claude",
   codex: "openai",
-  gemini: "gemini",
+  gemini: "gemini", // 历史类型，筛选栏不再展示
   opencode: "opencode",
+  grok: "grok",
 };
 
 // Select 的 "all" 哨兵和用户自定义名称同处一个值域——真有来源/模型叫 "all"
@@ -206,12 +207,7 @@ export function UsageDashboard({
       className="space-y-8 pb-8"
     >
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-2">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-bold tracking-tight">
-            {t("usage.title")}
-          </h2>
-          <p className="text-sm text-muted-foreground">{t("usage.subtitle")}</p>
-        </div>
+        <p className="text-sm text-muted-foreground">{t("usage.subtitle")}</p>
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center p-1 bg-muted/30 rounded-lg border border-border/50">

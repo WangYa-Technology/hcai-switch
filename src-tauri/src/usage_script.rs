@@ -15,9 +15,12 @@ pub async fn execute_usage_script(
     user_id: Option<&str>,
     template_type: Option<&str>,
 ) -> Result<Value, AppError> {
-    // 检测是否为自定义模板模式
-    // 优先使用前端传递的 template_type
-    let is_custom_template = template_type.map(|t| t == "custom").unwrap_or(false);
+    // 自定义 / HCAI 模板：允许脚本内写完整绝对 URL（HCAI 用量接口固定在
+    // ai.hctopup.com，与区域推理节点 base_url 可能不同源）
+    let is_hcai_template = template_type.map(|t| t == "hcai").unwrap_or(false);
+    let is_custom_template = template_type
+        .map(|t| t == "custom" || t == "hcai")
+        .unwrap_or(false);
 
     // 1. 替换模板变量，避免泄露敏感信息
     let script_with_vars =
@@ -107,8 +110,12 @@ pub async fn execute_usage_script(
     // 5. 验证请求 URL（HTTPS 强制 + 同源检查）
     validate_request_url(&request.url, base_url, is_custom_template)?;
 
-    // 6. 发送 HTTP 请求
-    let response_data = send_http_request(&request, timeout_secs).await?;
+    // 6. 发送 HTTP 请求（HCAI 模板：主站失败时自动切换区域备用节点）
+    let response_data = if is_hcai_template {
+        send_http_request_with_hcai_fallback(&request, timeout_secs).await?
+    } else {
+        send_http_request(&request, timeout_secs).await?
+    };
 
     // 7. 在独立作用域中执行 extractor（确保 Runtime/Context 在函数结束前释放）
     let result: Value = {
@@ -209,7 +216,7 @@ pub async fn execute_usage_script(
 }
 
 /// 请求配置结构
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize)]
 struct RequestConfig {
     url: String,
     method: String,
@@ -217,6 +224,64 @@ struct RequestConfig {
     headers: HashMap<String, String>,
     #[serde(default)]
     body: Option<String>,
+}
+
+/// HCAI 全部网关主机（脚本 URL 已用当前保存节点；失败时尝试其余节点）
+const HCAI_GATEWAY_HOSTS: &[&str] = &[
+    "ai.hctopup.com",
+    "ai-us.hctopup.com",
+    "ai-prod.hctopup.com",
+];
+
+/// HCAI 用量请求：当前节点连接失败/5xx 时依次改写 host 重试其它区域节点
+async fn send_http_request_with_hcai_fallback(
+    config: &RequestConfig,
+    timeout_secs: u64,
+) -> Result<String, AppError> {
+    match send_http_request(config, timeout_secs).await {
+        Ok(body) => return Ok(body),
+        Err(first_err) => {
+            let msg = first_err.to_string();
+            // 鉴权类 4xx 对所有节点通常一致，不再重试
+            if msg.contains("HTTP 401") || msg.contains("HTTP 403") || msg.contains("HTTP 400") {
+                return Err(first_err);
+            }
+
+            let Ok(parsed) = Url::parse(&config.url) else {
+                return Err(first_err);
+            };
+            let Some(original_host) = parsed.host_str().map(|s| s.to_string()) else {
+                return Err(first_err);
+            };
+
+            let mut last_err = first_err;
+            for host in HCAI_GATEWAY_HOSTS {
+                if host.eq_ignore_ascii_case(&original_host) {
+                    continue;
+                }
+                let mut retry_url = parsed.clone();
+                if retry_url.set_host(Some(host)).is_err() {
+                    continue;
+                }
+                let mut retry = config.clone();
+                retry.url = retry_url.to_string();
+                match send_http_request(&retry, timeout_secs).await {
+                    Ok(body) => return Ok(body),
+                    Err(e) => {
+                        let em = e.to_string();
+                        if em.contains("HTTP 401")
+                            || em.contains("HTTP 403")
+                            || em.contains("HTTP 400")
+                        {
+                            return Err(e);
+                        }
+                        last_err = e;
+                    }
+                }
+            }
+            Err(last_err)
+        }
+    }
 }
 
 /// 发送 HTTP 请求

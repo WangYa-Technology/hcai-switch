@@ -523,7 +523,11 @@ fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet:
             }
             _ => false,
         },
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => false,
+        AppType::OpenCode
+        | AppType::OpenClaw
+        | AppType::Hermes
+        | AppType::ClaudeDesktop
+        | AppType::Grok => false,
     }
 }
 
@@ -593,9 +597,11 @@ pub(crate) fn remove_common_config_from_settings(
             }
             Ok(result)
         }
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => {
-            Ok(settings.clone())
-        }
+        AppType::OpenCode
+        | AppType::OpenClaw
+        | AppType::Hermes
+        | AppType::ClaudeDesktop
+        | AppType::Grok => Ok(settings.clone()),
     }
 }
 
@@ -650,9 +656,11 @@ fn apply_common_config_to_settings(
             }
             Ok(result)
         }
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => {
-            Ok(settings.clone())
-        }
+        AppType::OpenCode
+        | AppType::OpenClaw
+        | AppType::Hermes
+        | AppType::ClaudeDesktop
+        | AppType::Grok => Ok(settings.clone()),
     }
 }
 
@@ -1037,6 +1045,9 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
             // Delegate to write_gemini_live which handles env file writing correctly
             write_gemini_live(provider)?;
         }
+        AppType::Grok => {
+            crate::grok_config::write_grok_provider_live(&provider.settings_config)?;
+        }
         AppType::OpenCode => {
             // OpenCode uses additive mode - write provider to config
             use crate::opencode_config;
@@ -1352,6 +1363,16 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
                 "config": config_obj
             }))
         }
+        AppType::Grok => {
+            if !crate::grok_config::live_exists() {
+                return Err(AppError::localized(
+                    "grok.live.missing",
+                    "Grok CLI 配置不存在（~/.grok）",
+                    "Grok CLI configuration not found (~/.grok)",
+                ));
+            }
+            crate::grok_config::provider_settings_from_live()
+        }
         AppType::OpenCode => {
             use crate::opencode_config::{get_opencode_config_path, read_opencode_config};
 
@@ -1488,44 +1509,48 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
                 "config": config_obj
             })
         }
+        AppType::Grok => crate::grok_config::provider_settings_from_live()?,
         // OpenCode, OpenClaw and Hermes use additive mode and are handled by early return above
         AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
             unreachable!("additive mode apps are handled by early return")
         }
     };
 
-    let mut provider = Provider::with_id(
-        "default".to_string(),
-        "default".to_string(),
-        settings_config,
-        None,
-    );
-    provider.category = Some(
-        if matches!(app_type, AppType::Codex) {
-            let config_text = provider
-                .settings_config
-                .get("config")
-                .and_then(Value::as_str);
+    let (default_name, default_website, default_icon, default_category) = match app_type {
+        AppType::Grok => (
+            "Xai Official".to_string(),
+            Some("https://grok.com/".to_string()),
+            Some("grok".to_string()),
+            "official".to_string(),
+        ),
+        AppType::Codex => {
+            let config_text = settings_config.get("config").and_then(Value::as_str);
             let has_provider_key = crate::codex_config::extract_codex_api_key(
-                provider.settings_config.get("auth"),
+                settings_config.get("auth"),
                 config_text,
             )
             .is_some();
-            let has_login_material = provider
-                .settings_config
+            let has_login_material = settings_config
                 .get("auth")
                 .is_some_and(crate::codex_config::codex_auth_has_login_material);
-
-            if has_login_material && !has_provider_key {
+            let cat = if has_login_material && !has_provider_key {
                 "official"
             } else {
                 "custom"
-            }
-        } else {
-            "custom"
+            };
+            ("default".to_string(), None, None, cat.to_string())
         }
-        .to_string(),
+        _ => ("default".to_string(), None, None, "custom".to_string()),
+    };
+
+    let mut provider = Provider::with_id(
+        "default".to_string(),
+        default_name,
+        settings_config,
+        default_website,
     );
+    provider.category = Some(default_category);
+    provider.icon = default_icon;
 
     state.db.save_provider(app_type.as_str(), &provider)?;
     state

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import type { SettingsFormState } from "@/hooks/useSettings";
 import type { VisibleApps } from "@/types";
-import type { AppId } from "@/lib/api";
+import type { AppId } from "@/lib/api/types";
 
 interface AppVisibilitySettingsProps {
   settings: SettingsFormState;
@@ -25,11 +25,17 @@ const APP_CONFIG: Array<{
     nameKey: "apps.claudeDesktop",
   },
   { id: "codex", icon: "openai", nameKey: "apps.codex" },
-  { id: "gemini", icon: "gemini", nameKey: "apps.gemini" },
   { id: "opencode", icon: "opencode", nameKey: "apps.opencode" },
-  { id: "openclaw", icon: "openclaw", nameKey: "apps.openclaw" },
-  { id: "hermes", icon: "hermes", nameKey: "apps.hermes" },
+  { id: "grok", icon: "grok", nameKey: "apps.grok" },
 ];
+
+const DEFAULT_VISIBLE_APPS: VisibleApps = {
+  claude: true,
+  "claude-desktop": true,
+  codex: true,
+  opencode: true,
+  grok: true,
+};
 
 export function AppVisibilitySettings({
   settings,
@@ -37,14 +43,9 @@ export function AppVisibilitySettings({
 }: AppVisibilitySettingsProps) {
   const { t } = useTranslation();
 
-  const visibleApps: VisibleApps = settings.visibleApps ?? {
-    claude: true,
-    "claude-desktop": true,
-    codex: true,
-    gemini: true,
-    opencode: true,
-    openclaw: true,
-    hermes: true,
+  const visibleApps: VisibleApps = {
+    ...DEFAULT_VISIBLE_APPS,
+    ...(settings.visibleApps ?? {}),
   };
 
   // Count how many apps are currently visible

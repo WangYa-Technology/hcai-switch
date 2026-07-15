@@ -38,6 +38,11 @@ interface UseCodexCommonConfigProps {
   };
   initialEnabled?: boolean;
   selectedPresetId?: string;
+  /**
+   * 仅 Codex 应启用。Grok 等复用 auth/config 双文件状态时必须关闭，
+   * 否则新建会默认合并 Codex 通用片段（notify/Computer Use 等）。
+   */
+  enabled?: boolean;
 }
 
 /**
@@ -50,6 +55,7 @@ export function useCodexCommonConfig({
   initialData,
   initialEnabled,
   selectedPresetId,
+  enabled = true,
 }: UseCodexCommonConfigProps) {
   const { t } = useTranslation();
   const [useCommonConfig, setUseCommonConfig] = useState(false);
@@ -119,6 +125,12 @@ export function useCodexCommonConfig({
 
   // 初始化：从 config.json 加载，支持从 localStorage 迁移
   useEffect(() => {
+    if (!enabled) {
+      setIsLoading(false);
+      setUseCommonConfig(false);
+      return;
+    }
+
     let mounted = true;
 
     const loadSnippet = async () => {
@@ -167,11 +179,12 @@ export function useCodexCommonConfig({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [enabled]);
 
   // 初始化时检查通用配置片段（编辑模式）
   useEffect(() => {
     if (
+      !enabled ||
       !initialData?.settingsConfig ||
       isLoading ||
       hasInitializedEditMode.current
@@ -239,6 +252,7 @@ export function useCodexCommonConfig({
     setCommonConfigError("");
     setUseCommonConfig(hasCommon);
   }, [
+    enabled,
     codexConfig,
     commonConfigSnippet,
     initialData,
@@ -251,7 +265,12 @@ export function useCodexCommonConfig({
 
   // 新建模式：如果通用配置片段存在且有效，默认启用
   useEffect(() => {
-    if (initialData || isLoading || hasInitializedNewMode.current) {
+    if (
+      !enabled ||
+      initialData ||
+      isLoading ||
+      hasInitializedNewMode.current
+    ) {
       return;
     }
 
@@ -298,6 +317,7 @@ export function useCodexCommonConfig({
       cancelled = true;
     };
   }, [
+    enabled,
     initialData,
     commonConfigSnippet,
     isLoading,
@@ -310,6 +330,7 @@ export function useCodexCommonConfig({
   // 处理通用配置开关
   const handleCommonConfigToggle = useCallback(
     async (checked: boolean) => {
+      if (!enabled) return;
       // 在同步校验之前领号：即使本次走同步早退分支，也要让更早发出、
       // 仍在飞的异步结果作废，避免它晚到后把开关翻回去。
       const seq = ++tomlOpSeqRef.current;
@@ -355,6 +376,7 @@ export function useCodexCommonConfig({
       }, 0);
     },
     [
+      enabled,
       codexConfig,
       commonConfigSnippet,
       isTomlOpStale,
@@ -367,6 +389,7 @@ export function useCodexCommonConfig({
   // 处理通用配置片段变化
   const handleCommonConfigSnippetChange = useCallback(
     async (value: string): Promise<boolean> => {
+      if (!enabled) return false;
       // 与 handleCommonConfigToggle 同一套序号：连续保存或保存与开关
       // 交错时，只允许最后一次操作的结果落地。
       const seq = ++tomlOpSeqRef.current;

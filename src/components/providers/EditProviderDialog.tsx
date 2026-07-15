@@ -8,7 +8,7 @@ import {
   ProviderForm,
   type ProviderFormValues,
 } from "@/components/providers/forms/ProviderForm";
-import { openclawApi, providersApi, vscodeApi, type AppId } from "@/lib/api";
+import { providersApi, vscodeApi, type AppId } from "@/lib/api";
 
 interface EditProviderDialogProps {
   open: boolean;
@@ -20,6 +20,10 @@ interface EditProviderDialogProps {
   }) => Promise<void> | void;
   appId: AppId;
   isProxyTakeover?: boolean; // 代理接管模式下不读取 live（避免显示被接管后的代理配置）
+  /** Leave space for app sidebar (px) */
+  leftOffset?: number;
+  /** Top content inset matching App dragBarHeight (0 on Windows) */
+  topOffset?: number;
 }
 
 export function EditProviderDialog({
@@ -29,6 +33,8 @@ export function EditProviderDialog({
   onSubmit,
   appId,
   isProxyTakeover = false,
+  leftOffset = 0,
+  topOffset,
 }: EditProviderDialogProps) {
   const { t } = useTranslation();
   const [isFormSubmitting, setIsFormSubmitting] = useState(false);
@@ -73,26 +79,6 @@ export function EditProviderDialog({
         if (!cancelled) {
           setLiveSettings(null);
           setHasLoadedLive(true);
-        }
-        return;
-      }
-
-      if (appId === "openclaw") {
-        try {
-          const live = await openclawApi.getLiveProvider(provider.id);
-          if (!cancelled && live && typeof live === "object") {
-            setLiveSettings(live);
-          } else if (!cancelled) {
-            setLiveSettings(null);
-          }
-        } catch {
-          if (!cancelled) {
-            setLiveSettings(null);
-          }
-        } finally {
-          if (!cancelled) {
-            setHasLoadedLive(true);
-          }
         }
         return;
       }
@@ -183,14 +169,13 @@ export function EditProviderDialog({
       if (!provider) return;
 
       // 注意：values.settingsConfig 已经是最终的配置字符串
-      // ProviderForm 已经为不同的 app 类型（Claude/Codex/Gemini）正确组装了配置
+      // ProviderForm 已经为不同的 app 类型正确组装了配置
       const parsedConfig = JSON.parse(values.settingsConfig) as Record<
         string,
         unknown
       >;
       const nextProviderId =
-        (appId === "opencode" || appId === "openclaw") &&
-        values.providerKey?.trim()
+        appId === "opencode" && values.providerKey?.trim()
           ? values.providerKey.trim()
           : provider.id;
 
@@ -226,6 +211,8 @@ export function EditProviderDialog({
       isOpen={open}
       title={t("provider.editProvider")}
       onClose={() => onOpenChange(false)}
+      leftOffset={leftOffset}
+      topOffset={topOffset}
       footer={
         <Button
           type="submit"

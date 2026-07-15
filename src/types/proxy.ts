@@ -45,10 +45,8 @@ export interface ProxyTakeoverStatus {
   claude: boolean;
   "claude-desktop"?: boolean;
   codex: boolean;
-  gemini: boolean;
   opencode: boolean;
-  openclaw: boolean;
-  hermes: boolean;
+  grok?: boolean;
 }
 
 export interface ProviderHealth {

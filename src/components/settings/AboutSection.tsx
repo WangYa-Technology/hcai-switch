@@ -40,6 +40,7 @@ import type { AppId } from "@/lib/api/types";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { isWindows } from "@/lib/platform";
 import { isUpdateAvailable } from "@/lib/version";
+import { cn } from "@/lib/utils";
 import { ToolUpgradeConfirmDialog } from "./ToolUpgradeConfirmDialog";
 import { ToolInstallRow } from "./ToolInstallRow";
 
@@ -59,14 +60,7 @@ interface ToolVersion {
   wsl_distro: string | null;
 }
 
-const TOOL_NAMES = [
-  "claude",
-  "codex",
-  "gemini",
-  "opencode",
-  "openclaw",
-  "hermes",
-] as const;
+const TOOL_NAMES = ["claude", "codex", "opencode", "grok"] as const;
 type ToolName = (typeof TOOL_NAMES)[number];
 type ToolLifecycleAction = "install" | "update";
 
@@ -108,59 +102,46 @@ const ENV_BADGE_CONFIG: Record<
 const posixScriptInstallCommand = (url: string) =>
   `bash -c 'tmp=$(mktemp) && curl -fsSL ${url} -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'`;
 
-const HERMES_WINDOWS_INSTALL_SCRIPT =
-  "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex";
-
-const powershellEncodedCommand = (script: string): string => {
-  let binary = "";
-  for (let i = 0; i < script.length; i += 1) {
-    const code = script.charCodeAt(i);
-    binary += String.fromCharCode(code & 0xff, code >> 8);
-  }
-  return btoa(binary);
-};
-
-const HERMES_WINDOWS_INSTALL_COMMAND = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${powershellEncodedCommand(
-  HERMES_WINDOWS_INSTALL_SCRIPT,
-)}`;
-
-const POSIX_ONE_CLICK_INSTALL_COMMANDS = `# Claude Code
+/** Terminal fallback install commands — shown per platform in About. */
+const POSIX_INSTALL_COMMANDS = `# Claude Code
 ${posixScriptInstallCommand("https://claude.ai/install.sh")} || npm i -g @anthropic-ai/claude-code@latest
+
 # Codex
 npm i -g @openai/codex@latest
-# Gemini CLI
-npm i -g @google/gemini-cli@latest
+
 # OpenCode
 ${posixScriptInstallCommand("https://opencode.ai/install")} || npm i -g opencode-ai@latest
-# OpenClaw
-npm i -g openclaw@latest
-# Hermes
-${posixScriptInstallCommand("https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh")}`;
 
-const WINDOWS_ONE_CLICK_INSTALL_COMMANDS = `# Claude Code
+# Grok Build
+${posixScriptInstallCommand("https://x.ai/cli/install.sh")}`;
+
+const WINDOWS_INSTALL_COMMANDS = `# Claude Code
 npm i -g @anthropic-ai/claude-code@latest
+
 # Codex
 npm i -g @openai/codex@latest
-# Gemini CLI
-npm i -g @google/gemini-cli@latest
+
 # OpenCode
 npm i -g opencode-ai@latest
-# OpenClaw
-npm i -g openclaw@latest
-# Hermes
-${HERMES_WINDOWS_INSTALL_COMMAND}`;
 
-const ONE_CLICK_INSTALL_COMMANDS = isWindows()
-  ? WINDOWS_ONE_CLICK_INSTALL_COMMANDS
-  : POSIX_ONE_CLICK_INSTALL_COMMANDS;
+# Grok Build（官方安装脚本；建议在 Git Bash / MSYS 中执行）
+${posixScriptInstallCommand("https://x.ai/cli/install.sh")}`;
+
+type InstallCommandPlatform = "posix" | "windows";
+
+const INSTALL_COMMAND_BLOCKS: {
+  id: InstallCommandPlatform;
+  commands: string;
+}[] = [
+  { id: "posix", commands: POSIX_INSTALL_COMMANDS },
+  { id: "windows", commands: WINDOWS_INSTALL_COMMANDS },
+];
 
 const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   claude: "Claude Code",
   codex: "Codex",
-  gemini: "Gemini CLI",
   opencode: "OpenCode",
-  openclaw: "OpenClaw",
-  hermes: "Hermes",
+  grok: "Grok Build",
 };
 
 // 后端返回的 tool 是 string；这里收敛唯一的 ToolName 断言与兜底，供升级确认
@@ -172,10 +153,8 @@ function toolDisplayName(tool: string): string {
 const TOOL_APP_IDS: Record<ToolName, AppId> = {
   claude: "claude",
   codex: "codex",
-  gemini: "gemini",
   opencode: "opencode",
-  openclaw: "openclaw",
-  hermes: "hermes",
+  grok: "grok",
 };
 
 // 工具版本探测代价高：每个工具一次 `--version` 子进程 + 一次 npm/github/pypi 网络请求。
@@ -430,13 +409,13 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
 
       if (!displayVersion) {
         await settingsApi.openExternal(
-          "https://github.com/farion1231/cc-switch/releases",
+          "https://github.com/HeLongaa/hcai-switch/releases",
         );
         return;
       }
 
       await settingsApi.openExternal(
-        `https://github.com/farion1231/cc-switch/releases/tag/${displayVersion}`,
+        `https://github.com/HeLongaa/hcai-switch/releases/tag/${displayVersion}`,
       );
     } catch (error) {
       console.error("[AboutSection] Failed to open release notes", error);
@@ -493,15 +472,24 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
     }
   }, [checkUpdate, hasUpdate, isPortable, resetDismiss, t]);
 
-  const handleCopyInstallCommands = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(ONE_CLICK_INSTALL_COMMANDS);
-      toast.success(t("settings.installCommandsCopied"), { closeButton: true });
-    } catch (error) {
-      console.error("[AboutSection] Failed to copy install commands", error);
-      toast.error(t("settings.installCommandsCopyFailed"));
-    }
-  }, [t]);
+  const handleCopyInstallCommands = useCallback(
+    async (commands: string) => {
+      try {
+        await navigator.clipboard.writeText(commands);
+        toast.success(t("settings.installCommandsCopied"), {
+          closeButton: true,
+        });
+      } catch (error) {
+        console.error("[AboutSection] Failed to copy install commands", error);
+        toast.error(t("settings.installCommandsCopyFailed"));
+      }
+    },
+    [t],
+  );
+
+  const currentInstallPlatform: InstallCommandPlatform = isWindows()
+    ? "windows"
+    : "posix";
 
   // 升级后自动补诊单个工具：静默后台执行。有冲突写入结果；无冲突则清掉该工具可能残留
   // 的过期冲突展示（外部卸载/修复后冲突可能已消失，不清会一直显示旧列表）。不弹 toast、
@@ -829,9 +817,9 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
           <div className="flex items-center gap-8">
             <div className="flex flex-col items-center gap-2">
               <div className="flex items-center gap-2">
-                <img src={appIcon} alt="CC Switch" className="h-5 w-5" />
+                <img src={appIcon} alt="HCAI Switch" className="h-5 w-5" />
                 <h4 className="text-lg font-semibold text-foreground">
-                  CC Switch
+                  HCAI Switch
                 </h4>
               </div>
               <div className="flex items-center gap-2">
@@ -860,7 +848,9 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => settingsApi.openExternal("https://ccswitch.io")}
+              onClick={() =>
+                settingsApi.openExternal("https://github.com/WangYa-Technology")
+              }
               className="h-8 gap-1.5 text-xs"
             >
               <Globe className="h-3.5 w-3.5" />
@@ -872,7 +862,7 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
               size="sm"
               onClick={() =>
                 settingsApi.openExternal(
-                  "https://github.com/farion1231/cc-switch",
+                  "https://github.com/HeLongaa/hcai-switch",
                 )
               }
               className="h-8 gap-1.5 text-xs"
@@ -1231,27 +1221,136 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
           {t("settings.manualInstallCommands")}
         </button>
         {showInstallCommands && (
-          <div className="rounded-xl border border-border bg-gradient-to-br from-card/80 to-card/40 p-4 space-y-3 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs text-muted-foreground">
-                {t("settings.oneClickInstallHint")}
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleCopyInstallCommands}
-                className="h-7 gap-1.5 text-xs"
-              >
-                <Copy className="h-3.5 w-3.5" />
-                {t("common.copy")}
-              </Button>
+          <div className="rounded-xl border border-border bg-gradient-to-br from-card/80 to-card/40 p-4 space-y-4 shadow-sm">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {t("settings.oneClickInstallHint")}
+            </p>
+
+            <div className="space-y-3">
+              {INSTALL_COMMAND_BLOCKS.map((block) => {
+                const isCurrent = block.id === currentInstallPlatform;
+                const platformLabel =
+                  block.id === "posix"
+                    ? t("settings.installCommandsPlatformPosix", {
+                        defaultValue: "macOS / Linux",
+                      })
+                    : t("settings.installCommandsPlatformWindows", {
+                        defaultValue: "Windows",
+                      });
+                const platformHint =
+                  block.id === "posix"
+                    ? t("settings.installCommandsPlatformPosixHint", {
+                        defaultValue:
+                          "在终端（zsh / bash）中执行；优先官方安装脚本，失败时回退 npm。",
+                      })
+                    : t("settings.installCommandsPlatformWindowsHint", {
+                        defaultValue:
+                          "在 PowerShell 或 cmd 中执行 npm 命令；Grok Build 官方脚本建议在 Git Bash 中运行。",
+                      });
+
+                return (
+                  <div
+                    key={block.id}
+                    className={cn(
+                      "rounded-lg border bg-background/60 p-3 space-y-2",
+                      isCurrent
+                        ? "border-primary/40 ring-1 ring-primary/15"
+                        : "border-border/70",
+                    )}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium text-foreground">
+                          {platformLabel}
+                        </span>
+                        {isCurrent && (
+                          <Badge
+                            variant="secondary"
+                            className="h-5 px-1.5 text-[10px] font-normal"
+                          >
+                            {t("settings.installCommandsPlatformCurrent", {
+                              defaultValue: "当前系统",
+                            })}
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          void handleCopyInstallCommands(block.commands)
+                        }
+                        className="h-7 gap-1.5 text-xs shrink-0"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                        {t("common.copy")}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      {platformHint}
+                    </p>
+                    <pre className="text-xs font-mono bg-muted/40 px-3 py-2.5 rounded-md border border-border/50 overflow-x-auto whitespace-pre-wrap break-all">
+                      {block.commands}
+                    </pre>
+                  </div>
+                );
+              })}
             </div>
-            <pre className="text-xs font-mono bg-background/80 px-3 py-2.5 rounded-lg border border-border/60 overflow-x-auto">
-              {ONE_CLICK_INSTALL_COMMANDS}
-            </pre>
           </div>
         )}
       </motion.div>
+
+      {/* MIT / 二开说明：置于关于页最底部 */}
+      <motion.footer
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.35 }}
+        className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3.5 space-y-1.5"
+      >
+        <p className="text-xs font-medium text-foreground/90">
+          {t("settings.forkNoticeTitle", {
+            defaultValue: "开源协议与二开说明",
+          })}
+        </p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {t("settings.forkNoticeBody", {
+            defaultValue:
+              "本软件基于原项目 CC Switch（作者 Jason Young）在 MIT License 下进行二次开发与修改。原项目版权归原作者所有；本修改版亦在 MIT 协议下分发，并保留原许可证声明。",
+          })}
+        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            onClick={() =>
+              void settingsApi.openExternal(
+                "https://github.com/farion1231/cc-switch",
+              )
+            }
+          >
+            <Github className="h-3 w-3" />
+            {t("settings.forkNoticeUpstream", {
+              defaultValue: "原项目 farion1231/cc-switch",
+            })}
+          </button>
+          <span className="text-xs text-muted-foreground/70" aria-hidden>
+            ·
+          </span>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            onClick={() =>
+              void settingsApi.openExternal(
+                "https://github.com/farion1231/cc-switch/blob/main/LICENSE",
+              )
+            }
+          >
+            {t("settings.forkNoticeLicense", {
+              defaultValue: "MIT License",
+            })}
+          </button>
+        </div>
+      </motion.footer>
 
       <ToolUpgradeConfirmDialog
         isOpen={pendingUpgrade !== null}

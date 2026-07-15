@@ -30,6 +30,7 @@ impl McpApps {
             AppType::OpenClaw => false, // OpenClaw doesn't support MCP
             AppType::Hermes => self.hermes,
             AppType::ClaudeDesktop => false,
+            AppType::Grok => false, // Grok Build MCP is managed via its own config.toml
         }
     }
 
@@ -43,6 +44,7 @@ impl McpApps {
             AppType::OpenClaw => {} // OpenClaw doesn't support MCP, ignore
             AppType::Hermes => self.hermes = enabled,
             AppType::ClaudeDesktop => {} // Claude Desktop 3P provider config doesn't support MCP here
+            AppType::Grok => {}
         }
     }
 
@@ -99,6 +101,7 @@ impl SkillApps {
             AppType::Hermes => self.hermes,
             AppType::OpenClaw => false, // OpenClaw doesn't support Skills
             AppType::ClaudeDesktop => false,
+            AppType::Grok => false,
         }
     }
 
@@ -112,6 +115,7 @@ impl SkillApps {
             AppType::Hermes => self.hermes = enabled,
             AppType::OpenClaw => {} // OpenClaw doesn't support Skills, ignore
             AppType::ClaudeDesktop => {} // Claude Desktop 3P profiles don't use CC Switch skill sync
+            AppType::Grok => {}
         }
     }
 
@@ -351,6 +355,7 @@ pub enum AppType {
     OpenCode,
     OpenClaw,
     Hermes,
+    Grok,
 }
 
 impl AppType {
@@ -363,12 +368,13 @@ impl AppType {
             AppType::OpenCode => "opencode",
             AppType::OpenClaw => "openclaw",
             AppType::Hermes => "hermes",
+            AppType::Grok => "grok",
         }
     }
 
     /// Check if this app uses additive mode
     ///
-    /// - Switch mode (false): Only the current provider is written to live config (Claude, Codex, Gemini)
+    /// - Switch mode (false): Only the current provider is written to live config (Claude, Codex, Gemini, Grok)
     /// - Additive mode (true): All providers are written to live config (OpenCode, OpenClaw, Hermes)
     pub fn is_additive_mode(&self) -> bool {
         matches!(
@@ -377,7 +383,7 @@ impl AppType {
         )
     }
 
-    /// Return an iterator over all app types
+    /// Return an iterator over all historically known app types.
     pub fn all() -> impl Iterator<Item = AppType> {
         [
             AppType::Claude,
@@ -387,8 +393,32 @@ impl AppType {
             AppType::OpenCode,
             AppType::OpenClaw,
             AppType::Hermes,
+            AppType::Grok,
         ]
         .into_iter()
+    }
+
+    /// Apps still managed in the product UI.
+    pub fn managed() -> impl Iterator<Item = AppType> {
+        [
+            AppType::Claude,
+            AppType::ClaudeDesktop,
+            AppType::Codex,
+            AppType::OpenCode,
+            AppType::Grok,
+        ]
+        .into_iter()
+    }
+
+    pub fn is_managed(&self) -> bool {
+        matches!(
+            self,
+            AppType::Claude
+                | AppType::ClaudeDesktop
+                | AppType::Codex
+                | AppType::OpenCode
+                | AppType::Grok
+        )
     }
 }
 
@@ -405,10 +435,11 @@ impl FromStr for AppType {
             "opencode" => Ok(AppType::OpenCode),
             "openclaw" => Ok(AppType::OpenClaw),
             "hermes" => Ok(AppType::Hermes),
+            "grok" => Ok(AppType::Grok),
             other => Err(AppError::localized(
                 "unsupported_app",
-                format!("不支持的应用标识: '{other}'。可选值: claude, claude-desktop, codex, gemini, opencode, openclaw, hermes。"),
-                format!("Unsupported app id: '{other}'. Allowed: claude, claude-desktop, codex, gemini, opencode, openclaw, hermes."),
+                format!("不支持的应用标识: '{other}'。可选值: claude, claude-desktop, codex, gemini, opencode, openclaw, hermes, grok。"),
+                format!("Unsupported app id: '{other}'. Allowed: claude, claude-desktop, codex, gemini, opencode, openclaw, hermes, grok."),
             )),
         }
     }
@@ -434,6 +465,9 @@ pub struct CommonConfigSnippets {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hermes: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grok: Option<String>,
 }
 
 impl CommonConfigSnippets {
@@ -447,6 +481,7 @@ impl CommonConfigSnippets {
             AppType::OpenCode => self.opencode.as_ref(),
             AppType::OpenClaw => self.openclaw.as_ref(),
             AppType::Hermes => self.hermes.as_ref(),
+            AppType::Grok => self.grok.as_ref(),
         }
     }
 
@@ -460,6 +495,7 @@ impl CommonConfigSnippets {
             AppType::OpenCode => self.opencode = snippet,
             AppType::OpenClaw => self.openclaw = snippet,
             AppType::Hermes => self.hermes = snippet,
+            AppType::Grok => self.grok = snippet,
         }
     }
 }
@@ -665,6 +701,8 @@ impl MultiAppConfig {
             AppType::OpenCode => &self.mcp.opencode,
             AppType::OpenClaw => &self.mcp.openclaw,
             AppType::Hermes => &self.mcp.hermes,
+            // Grok manages MCP via its own config.toml; reuse empty claude_desktop-like bucket
+            AppType::Grok => &self.mcp.openclaw,
         }
     }
 
@@ -678,6 +716,7 @@ impl MultiAppConfig {
             AppType::OpenCode => &mut self.mcp.opencode,
             AppType::OpenClaw => &mut self.mcp.openclaw,
             AppType::Hermes => &mut self.mcp.hermes,
+            AppType::Grok => &mut self.mcp.openclaw,
         }
     }
 
@@ -804,6 +843,7 @@ impl MultiAppConfig {
             AppType::OpenCode => &mut config.prompts.opencode.prompts,
             AppType::OpenClaw => &mut config.prompts.openclaw.prompts,
             AppType::Hermes => &mut config.prompts.hermes.prompts,
+            AppType::Grok => return Ok(false),
         };
 
         prompts.insert(id, prompt);
@@ -846,6 +886,7 @@ impl MultiAppConfig {
                 AppType::OpenCode => &self.mcp.opencode.servers,
                 AppType::OpenClaw => continue, // OpenClaw MCP is still in development, skip
                 AppType::Hermes => continue,   // Hermes didn't exist in v3.6.x, skip
+                AppType::Grok => continue,
             };
 
             for (id, entry) in old_servers {

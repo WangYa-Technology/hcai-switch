@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CC Switch",
+  "productName": "HCAI Switch",
   "version": "3.17.0",
-  "identifier": "com.ccswitch.desktop",
+  "identifier": "com.hcaiswitch.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:3000",
@@ -60,9 +60,9 @@
       }
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM4MDI4QzlBNTczOTI4RTMKUldUaktEbFhtb3dDeUM5US9kT0FmdGR5Ti9vQzcwa2dTMlpibDVDUmQ2M0VGTzVOWnd0SGpFVlEK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc3RjlEQkE4MTg5RDM5NjgKUldSb09aMFlxTnY1ZDk5YVBHK0lWVk5mT0NMQ3lGWk9sa2lNNmtTZGZhdWlCdGZrZ2RUc0NXcjAK",
       "endpoints": [
-        "https://github.com/farion1231/cc-switch/releases/latest/download/latest.json"
+        "https://github.com/HeLongaa/hcai-switch/releases/latest/download/latest.json"
       ]
     }
   }

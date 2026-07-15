@@ -48,7 +48,6 @@ import { WebdavSyncSection } from "@/components/settings/WebdavSyncSection";
 import { AboutSection } from "@/components/settings/AboutSection";
 import { ProxyTabContent } from "@/components/settings/ProxyTabContent";
 import { ConnectivityCheckConfigPanel } from "@/components/usage/ConnectivityCheckConfigPanel";
-import { UsageDashboard } from "@/components/usage/UsageDashboard";
 import { LogConfigPanel } from "@/components/settings/LogConfigPanel";
 import { AuthCenterPanel } from "@/components/settings/AuthCenterPanel";
 import { CodexAuthSettings } from "@/components/settings/CodexAuthSettings";
@@ -113,7 +112,8 @@ export function SettingsPage({
 
   useEffect(() => {
     if (open) {
-      setActiveTab(defaultTab);
+      // Usage stats moved to sidebar tools; map legacy defaultTab
+      setActiveTab(defaultTab === "usage" ? "general" : defaultTab);
       resetStatus();
     }
   }, [open, resetStatus, defaultTab]);
@@ -224,7 +224,7 @@ export function SettingsPage({
           onValueChange={setActiveTab}
           className="flex flex-col h-full"
         >
-          <TabsList className="grid w-full grid-cols-6 mb-6 glass rounded-lg">
+          <TabsList className="grid w-full grid-cols-5 mb-6 glass rounded-lg">
             <TabsTrigger value="general">
               {t("settings.tabGeneral")}
             </TabsTrigger>
@@ -235,7 +235,6 @@ export function SettingsPage({
             <TabsTrigger value="advanced">
               {t("settings.tabAdvanced")}
             </TabsTrigger>
-            <TabsTrigger value="usage">{t("usage.title")}</TabsTrigger>
             <TabsTrigger value="about">{t("common.about")}</TabsTrigger>
           </TabsList>
 
@@ -351,10 +350,8 @@ export function SettingsPage({
                             onResetAppConfig={resetAppConfigDir}
                             claudeDir={settings.claudeConfigDir}
                             codexDir={settings.codexConfigDir}
-                            geminiDir={settings.geminiConfigDir}
                             opencodeDir={settings.opencodeConfigDir}
-                            openclawDir={settings.openclawConfigDir}
-                            hermesDir={settings.hermesConfigDir}
+                            grokDir={settings.grokConfigDir}
                             onDirectoryChange={updateDirectory}
                             onBrowseDirectory={browseDirectory}
                             onResetDirectory={resetDirectory}
@@ -506,15 +503,6 @@ export function SettingsPage({
 
               <TabsContent value="about" className="mt-0">
                 <AboutSection isPortable={isPortable} />
-              </TabsContent>
-
-              <TabsContent value="usage" className="mt-0">
-                <UsageDashboard
-                  refreshIntervalMs={settings?.usageDashboardRefreshIntervalMs}
-                  onRefreshIntervalChange={(usageDashboardRefreshIntervalMs) =>
-                    handleAutoSave({ usageDashboardRefreshIntervalMs })
-                  }
-                />
               </TabsContent>
             </div>
 

@@ -136,6 +136,9 @@ impl ConfigService {
             AppType::Hermes => {
                 // Hermes uses additive mode, no live sync needed
             }
+            AppType::Grok => {
+                crate::grok_config::write_grok_provider_live(&provider.settings_config)?;
+            }
         }
 
         Ok(())

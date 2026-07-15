@@ -23,9 +23,23 @@ interface FullScreenPanelProps {
    * 通过 `cn`(twMerge) 合并，传入如 `pt-3` 只覆盖顶部内边距，其余保持默认。
    */
   contentClassName?: string;
+  /**
+   * 左侧留白（px），用于露出应用侧边栏。默认 0 为全宽遮罩。
+   * 面板与左边线仍从窗口顶贯通（与主页侧栏边线一致）。
+   */
+  leftOffset?: number;
+  /**
+   * 顶部内容避让高度（px）。侧栏模式下应传入 App 的 dragBarHeight：
+   * - macOS Overlay 标题栏：28
+   * - Linux 自绘窗控：32
+   * - Windows 原生标题栏：0
+   * 只垫高内容，不抬高面板本身，避免竖线不到顶。
+   */
+  topOffset?: number;
 }
 
-const DRAG_BAR_HEIGHT = isWindows() || isLinux() ? 0 : 28; // px - match App.tsx
+/** Fallback when App 未传入 topOffset（全宽遮罩 / 旧调用方） */
+const DEFAULT_DRAG_BAR_HEIGHT = isWindows() || isLinux() ? 0 : 28;
 const HEADER_HEIGHT = 64; // px - match App.tsx
 
 /**
@@ -40,6 +54,8 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
   children,
   footer,
   contentClassName,
+  leftOffset = 0,
+  topOffset,
 }) => {
   React.useEffect(() => {
     if (isOpen) {
@@ -83,6 +99,12 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
     };
   }, [isOpen]);
 
+  const insetLeft = Math.max(0, leftOffset);
+  // Prefer App-provided dragBarHeight (Win=0 / mac=28 / Linux app-controls=32).
+  // Fallback is platform default so Windows never gets a spurious 28px gap,
+  // and macOS full-width overlays still clear the traffic lights.
+  const contentTopPad = Math.max(0, topOffset ?? DEFAULT_DRAG_BAR_HEIGHT);
+
   return createPortal(
     <AnimatePresence>
       {isOpen && (
@@ -91,20 +113,27 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[60] flex flex-col"
-          style={{ backgroundColor: "hsl(var(--background))" }}
+          className={cn(
+            "fixed inset-y-0 right-0 z-[60] flex flex-col",
+            insetLeft > 0 && "border-l border-border/60",
+          )}
+          style={{
+            left: insetLeft,
+            backgroundColor: "hsl(var(--background))",
+          }}
         >
-          {/* Drag region - match App.tsx. Linux 上 DRAG_BAR_HEIGHT=0，
-              直接跳过整个元素；macOS 保留 28px 拖拽占位。 */}
-          {DRAG_BAR_HEIGHT > 0 && (
+          {/* 只垫高内容区，面板与左边线仍从窗口顶贯通 */}
+          {contentTopPad > 0 && (
             <div
-              data-tauri-drag-region
+              className="shrink-0"
+              {...DRAG_REGION_ATTR}
               style={
                 {
-                  WebkitAppRegion: "drag",
-                  height: DRAG_BAR_HEIGHT,
+                  ...DRAG_REGION_STYLE,
+                  height: contentTopPad,
                 } as React.CSSProperties
               }
+              aria-hidden
             />
           )}
 
@@ -131,7 +160,11 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
                 size="icon"
                 onClick={onClose}
                 className="rounded-lg select-none"
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                style={
+                  {
+                    ...(isLinux() ? {} : { WebkitAppRegion: "no-drag" }),
+                  } as React.CSSProperties
+                }
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
@@ -142,7 +175,7 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto scroll-overlay">
+          <div className="flex-1 overflow-y-auto scroll-overlay min-h-0">
             <div className={cn("px-6 py-6 space-y-6 w-full", contentClassName)}>
               {children}
             </div>

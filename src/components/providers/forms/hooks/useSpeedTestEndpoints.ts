@@ -2,12 +2,14 @@ import { useMemo } from "react";
 import type { AppId } from "@/lib/api";
 import type { ProviderPreset } from "@/config/claudeProviderPresets";
 import type { CodexProviderPreset } from "@/config/codexProviderPresets";
+import type { GrokProviderPreset } from "@/config/grokProviderPresets";
+import { extractGrokBaseUrl } from "@/config/grokProviderPresets";
 import type { ProviderMeta, EndpointCandidate } from "@/types";
 import { extractCodexBaseUrl } from "@/utils/providerConfigUtils";
 
 type PresetEntry = {
   id: string;
-  preset: ProviderPreset | CodexProviderPreset;
+  preset: ProviderPreset | CodexProviderPreset | GrokProviderPreset;
 };
 
 interface UseSpeedTestEndpointsProps {
@@ -16,6 +18,8 @@ interface UseSpeedTestEndpointsProps {
   presetEntries: PresetEntry[];
   baseUrl: string;
   codexBaseUrl: string;
+  /** Grok [model.*].base_url */
+  grokBaseUrl?: string;
   initialData?: {
     settingsConfig?: Record<string, unknown>;
     meta?: ProviderMeta;
@@ -39,11 +43,11 @@ export function useSpeedTestEndpoints({
   presetEntries,
   baseUrl,
   codexBaseUrl,
+  grokBaseUrl = "",
   initialData,
 }: UseSpeedTestEndpointsProps) {
   const claudeEndpoints = useMemo<EndpointCandidate[]>(() => {
-    // Reuse this branch for Claude and Gemini (non-Codex)
-    if (appId !== "claude" && appId !== "gemini") return [];
+    if (appId !== "claude") return [];
 
     const map = new Map<string, EndpointCandidate>();
     // 候选端点标记为 isCustom: false，表示来自预设或配置
@@ -63,15 +67,11 @@ export function useSpeedTestEndpoints({
     // 2. 编辑模式：初始数据中的 URL
     if (initialData && typeof initialData.settingsConfig === "object") {
       const configEnv = initialData.settingsConfig as {
-        env?: { ANTHROPIC_BASE_URL?: string; GOOGLE_GEMINI_BASE_URL?: string };
+        env?: { ANTHROPIC_BASE_URL?: string };
       };
-      const envUrls = [
-        configEnv.env?.ANTHROPIC_BASE_URL,
-        configEnv.env?.GOOGLE_GEMINI_BASE_URL,
-      ];
-      envUrls.forEach((u) => {
-        if (typeof u === "string") add(u);
-      });
+      if (typeof configEnv.env?.ANTHROPIC_BASE_URL === "string") {
+        add(configEnv.env.ANTHROPIC_BASE_URL);
+      }
     }
 
     // 3. 预设中的 endpointCandidates
@@ -79,21 +79,17 @@ export function useSpeedTestEndpoints({
       const entry = presetEntries.find((item) => item.id === selectedPresetId);
       if (entry) {
         const preset = entry.preset as ProviderPreset & {
-          settingsConfig?: { env?: { GOOGLE_GEMINI_BASE_URL?: string } };
+          settingsConfig?: { env?: { ANTHROPIC_BASE_URL?: string } };
           endpointCandidates?: string[];
         };
-        // 添加预设自己的 baseUrl（兼容 Claude/Gemini）
         const presetEnv = preset.settingsConfig as {
           env?: {
             ANTHROPIC_BASE_URL?: string;
-            GOOGLE_GEMINI_BASE_URL?: string;
           };
         };
-        const presetUrls = [
-          presetEnv?.env?.ANTHROPIC_BASE_URL,
-          presetEnv?.env?.GOOGLE_GEMINI_BASE_URL,
-        ];
-        presetUrls.forEach((u) => add(u));
+        if (typeof presetEnv?.env?.ANTHROPIC_BASE_URL === "string") {
+          add(presetEnv.env.ANTHROPIC_BASE_URL);
+        }
         // 添加预设的候选端点
         if (preset.endpointCandidates) {
           preset.endpointCandidates.forEach((url) => add(url));
@@ -155,5 +151,38 @@ export function useSpeedTestEndpoints({
     return Array.from(map.values());
   }, [appId, codexBaseUrl, initialData, selectedPresetId, presetEntries]);
 
-  return appId === "codex" ? codexEndpoints : claudeEndpoints;
+  const grokEndpoints = useMemo<EndpointCandidate[]>(() => {
+    if (appId !== "grok") return [];
+
+    const map = new Map<string, EndpointCandidate>();
+    const add = (url?: string, isCustom = false) => {
+      if (!url) return;
+      const sanitized = url.trim().replace(/\/+$/, "");
+      if (!sanitized || map.has(sanitized)) return;
+      map.set(sanitized, { url: sanitized, isCustom });
+    };
+
+    if (grokBaseUrl) add(grokBaseUrl);
+
+    const initialGrokConfig = initialData?.settingsConfig as
+      | { config?: string }
+      | undefined;
+    add(extractGrokBaseUrl(initialGrokConfig?.config ?? ""));
+
+    if (selectedPresetId && selectedPresetId !== "custom") {
+      const entry = presetEntries.find((item) => item.id === selectedPresetId);
+      if (entry) {
+        const preset = entry.preset as GrokProviderPreset;
+        add(extractGrokBaseUrl(preset.settingsConfig?.config ?? ""));
+        preset.endpointCandidates?.forEach((url) => add(url));
+      }
+    }
+    // 自定义：不预填官方端点；仅当前输入 / 已保存的候选进入测速列表
+
+    return Array.from(map.values());
+  }, [appId, grokBaseUrl, initialData, selectedPresetId, presetEntries]);
+
+  if (appId === "codex") return codexEndpoints;
+  if (appId === "grok") return grokEndpoints;
+  return claudeEndpoints;
 }

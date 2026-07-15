@@ -25,11 +25,15 @@ import { Switch } from "@/components/ui/switch";
 import { FullScreenPanel } from "@/components/common/FullScreenPanel";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { cn } from "@/lib/utils";
-import { TEMPLATE_TYPES, PROVIDER_TYPES } from "@/config/constants";
+import { TEMPLATE_TYPES, PROVIDER_TYPES, type TemplateType } from "@/config/constants";
 import {
   CODING_PLAN_PROVIDERS,
   detectCodingPlanProvider,
 } from "@/config/codingPlanProviders";
+import {
+  HCAI_USAGE_SCRIPT_CODE,
+  isHcaiBaseUrl,
+} from "@/lib/hcai/usageScript";
 import { formatUsageDataSummary } from "@/utils/usageDisplay";
 
 /**
@@ -125,6 +129,9 @@ const generatePresetTemplates = (
 
   // 官方订阅额度查询不需要脚本，使用 CLI/OAuth 凭据调用官方 API
   [TEMPLATE_TYPES.OFFICIAL_SUBSCRIPTION]: "",
+
+  // HCAI 中转站：固定用量接口 + Bearer 供应商 API Key
+  [TEMPLATE_TYPES.HCAI]: HCAI_USAGE_SCRIPT_CODE,
 });
 
 // 模板名称国际化键映射
@@ -137,6 +144,7 @@ const TEMPLATE_NAME_KEYS: Record<string, string> = {
   [TEMPLATE_TYPES.BALANCE]: "usageScript.templateBalance",
   [TEMPLATE_TYPES.OFFICIAL_SUBSCRIPTION]:
     "usageScript.templateOfficialSubscription",
+  [TEMPLATE_TYPES.HCAI]: "usageScript.templateHcai",
 };
 
 /** 官方余额查询供应商检测 */
@@ -159,7 +167,7 @@ function detectBalanceProvider(baseUrl: string | undefined): boolean {
 }
 
 function isOfficialSubscriptionProvider(provider: Provider, appId: AppId) {
-  if (!["claude", "codex", "gemini"].includes(appId)) return false;
+  if (!["claude", "codex"].includes(appId)) return false;
   if (provider.category === "official") return true;
 
   const config = provider.settingsConfig as Record<string, any>;
@@ -176,15 +184,6 @@ function isOfficialSubscriptionProvider(provider: Provider, appId: AppId) {
     return (
       !bearerToken &&
       (!apiKey || (typeof apiKey === "string" && apiKey.trim() === ""))
-    );
-  }
-  if (appId === "gemini") {
-    const env = config?.env || {};
-    const apiKey = env.GEMINI_API_KEY;
-    const baseUrl = env.GOOGLE_GEMINI_BASE_URL;
-    return (
-      (!apiKey || (typeof apiKey === "string" && apiKey.trim() === "")) &&
-      (!baseUrl || (typeof baseUrl === "string" && baseUrl.trim() === ""))
     );
   }
   return false;
@@ -254,26 +253,6 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
             apiKey,
             baseUrl: extractCodexBaseUrl(configToml),
           };
-        } else if (appId === "gemini") {
-          // Gemini: { env: { GEMINI_API_KEY, GOOGLE_GEMINI_BASE_URL } }
-          // Key fallback mirrors the backend resolver (Provider::resolve_usage_credentials).
-          const env = (config as any).env || {};
-          return {
-            apiKey: env.GEMINI_API_KEY || env.GOOGLE_API_KEY,
-            baseUrl: env.GOOGLE_GEMINI_BASE_URL,
-          };
-        } else if (appId === "hermes") {
-          // Hermes: settingsConfig 顶层扁平（snake_case，对应 config.yaml）
-          return {
-            apiKey: (config as any).api_key,
-            baseUrl: (config as any).base_url,
-          };
-        } else if (appId === "openclaw") {
-          // OpenClaw: settingsConfig 顶层扁平（camelCase，对应 openclaw.json）
-          return {
-            apiKey: (config as any).apiKey,
-            baseUrl: (config as any).baseUrl,
-          };
         } else if (appId === "opencode") {
           // OpenCode (OMO): 凭据嵌在 options.{baseURL, apiKey}（SDK options 对象）
           const options = (config as any).options || {};
@@ -335,6 +314,14 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
     if (isOfficialSubscription) {
       return createUsageScript();
+    }
+
+    // HCAI 网关：预填 HCAI 模板代码（默认未启用，与其它新配置一致）
+    if (isHcaiBaseUrl(providerCredentials.baseUrl)) {
+      return createUsageScript({
+        code: HCAI_USAGE_SCRIPT_CODE,
+        templateType: TEMPLATE_TYPES.HCAI,
+      });
     }
 
     return createUsageScript({
@@ -435,6 +422,10 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
       if (detectBalanceProvider(providerCredentials.baseUrl)) {
         return TEMPLATE_TYPES.BALANCE;
       }
+      // 新配置：HCAI 网关（含区域节点）默认选 HCAI 模板
+      if (isHcaiBaseUrl(providerCredentials.baseUrl)) {
+        return TEMPLATE_TYPES.HCAI;
+      }
       // 默认使用 GENERAL（与默认代码模板一致）
       return TEMPLATE_TYPES.GENERAL;
     },
@@ -480,15 +471,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
     // 保存时记录当前选择的模板类型
     const scriptWithTemplate = {
       ...script,
-      templateType: selectedTemplate as
-        | "custom"
-        | "general"
-        | "newapi"
-        | "github_copilot"
-        | "token_plan"
-        | "balance"
-        | "official_subscription"
-        | undefined,
+      templateType: (selectedTemplate as TemplateType | null) ?? undefined,
     };
     onSave(scriptWithTemplate);
     onClose();
@@ -791,6 +774,16 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
           accessToken: undefined,
           userId: undefined,
         });
+      } else if (presetName === TEMPLATE_TYPES.HCAI) {
+        // HCAI 固定用量 URL，凭据回退到供应商配置
+        setScript({
+          ...script,
+          code: preset,
+          apiKey: undefined,
+          baseUrl: undefined,
+          accessToken: undefined,
+          userId: undefined,
+        });
       }
       setSelectedTemplate(presetName);
     }
@@ -987,6 +980,18 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
               <div className="space-y-2 border-t border-white/10 pt-3">
                 <p className="text-sm text-muted-foreground">
                   {t("usageScript.copilotAutoAuth")}
+                </p>
+              </div>
+            )}
+
+            {/* HCAI 中转站：自动用供应商 API Key 查额度 */}
+            {selectedTemplate === TEMPLATE_TYPES.HCAI && (
+              <div className="space-y-2 border-t border-white/10 pt-3">
+                <p className="text-sm text-muted-foreground">
+                  {t("usageScript.hcaiHint", {
+                    defaultValue:
+                      "自动使用供应商 API Key 查询 HCAI 中转站额度（钱包/订阅）",
+                  })}
                 </p>
               </div>
             )}

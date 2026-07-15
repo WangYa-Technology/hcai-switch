@@ -171,8 +171,8 @@ impl Database {
 
         Err(AppError::localized(
             "backup.sql.invalid_format",
-            "仅支持导入由 CC Switch 导出的 SQL 备份文件。",
-            "Only SQL backups exported by CC Switch are supported.",
+            "仅支持导入由 HCAI Switch 导出的 SQL 备份文件。",
+            "Only SQL backups exported by HCAI Switch are supported.",
         ))
     }
 

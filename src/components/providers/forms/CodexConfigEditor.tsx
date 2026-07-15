@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { CodexAuthSection, CodexConfigSection } from "./CodexConfigSections";
+import {
+  CodexAuthSection,
+  CodexConfigSection,
+  type DualFileConfigVariant,
+} from "./CodexConfigSections";
 import { CodexCommonConfigModal } from "./CodexCommonConfigModal";
 
 interface CodexConfigEditorProps {
@@ -39,6 +43,9 @@ interface CodexConfigEditorProps {
   onExtract?: () => void;
 
   isExtracting?: boolean;
+
+  /** "grok" 时使用 Grok 文案并隐藏 Codex 专用选项 */
+  variant?: DualFileConfigVariant;
 }
 
 const CodexConfigEditor: React.FC<CodexConfigEditorProps> = ({
@@ -60,9 +67,11 @@ const CodexConfigEditor: React.FC<CodexConfigEditorProps> = ({
   configError,
   onExtract,
   isExtracting,
+  variant = "codex",
 }) => {
   const { t } = useTranslation();
   const [isCommonConfigModalOpen, setIsCommonConfigModalOpen] = useState(false);
+  const isGrok = variant === "grok";
 
   const handleCloseCommonConfigModal = () => {
     onCommonConfigErrorClear();
@@ -71,7 +80,7 @@ const CodexConfigEditor: React.FC<CodexConfigEditorProps> = ({
 
   return (
     <div className="space-y-6">
-      {isProxyTakeover && (
+      {isProxyTakeover && !isGrok && (
         <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
           <p className="text-xs text-amber-600 dark:text-amber-400">
             {t("codexConfig.proxyTakeoverStorageNotice")}
@@ -86,6 +95,7 @@ const CodexConfigEditor: React.FC<CodexConfigEditorProps> = ({
         onBlur={onAuthBlur}
         error={authError}
         isProxyTakeover={isProxyTakeover}
+        variant={variant}
       />
 
       {/* Config TOML Section */}
@@ -100,18 +110,21 @@ const CodexConfigEditor: React.FC<CodexConfigEditorProps> = ({
         commonConfigError={commonConfigError}
         configError={configError}
         isProxyTakeover={isProxyTakeover}
+        variant={variant}
       />
 
-      {/* Common Config Modal */}
-      <CodexCommonConfigModal
-        isOpen={isCommonConfigModalOpen}
-        onClose={handleCloseCommonConfigModal}
-        value={commonConfigSnippet}
-        onSave={onCommonConfigSnippetChange}
-        error={commonConfigError}
-        onExtract={onExtract}
-        isExtracting={isExtracting}
-      />
+      {/* Common Config Modal — Codex only */}
+      {!isGrok && (
+        <CodexCommonConfigModal
+          isOpen={isCommonConfigModalOpen}
+          onClose={handleCloseCommonConfigModal}
+          value={commonConfigSnippet}
+          onSave={onCommonConfigSnippetChange}
+          error={commonConfigError}
+          onExtract={onExtract}
+          isExtracting={isExtracting}
+        />
+      )}
     </div>
   );
 };

@@ -51,7 +51,6 @@ import type {
   ProviderCategory,
   ProviderMeta,
 } from "@/types";
-import type { OpenClawSuggestedDefaults } from "@/config/openclawProviderPresets";
 import {
   CLAUDE_DESKTOP_ROLE_ROUTE_IDS,
   claudeDesktopProviderPresets,
@@ -76,7 +75,6 @@ export type ClaudeDesktopProviderFormValues = ProviderFormData & {
   partnerPromotionKey?: string;
   meta?: ProviderMeta;
   providerKey?: string;
-  suggestedDefaults?: OpenClawSuggestedDefaults;
 };
 
 type ApiKeyField = "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY";
@@ -824,7 +822,7 @@ export function ClaudeDesktopProviderForm({
                     {needsModelMapping
                       ? t("claudeDesktop.modelMappingOnHint", {
                           defaultValue:
-                            "Claude Desktop 只接受 claude-sonnet-* / claude-opus-* / claude-haiku-* 三档角色 ID。开启后 CC Switch 会把这三档映射到供应商的实际模型，并在使用期间保持本地路由开启。",
+                            "Claude Desktop 只接受 claude-sonnet-* / claude-opus-* / claude-haiku-* 三档角色 ID。开启后 HCAI Switch 会把这三档映射到供应商的实际模型，并在使用期间保持本地路由开启。",
                         })
                       : t("claudeDesktop.modelMappingOffHint", {
                           defaultValue:

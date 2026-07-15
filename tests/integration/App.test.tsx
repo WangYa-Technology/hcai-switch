@@ -123,7 +123,7 @@ vi.mock("@/components/AppSwitcher", () => ({
       <span>{activeApp}</span>
       <button onClick={() => onSwitch("claude")}>switch-claude</button>
       <button onClick={() => onSwitch("codex")}>switch-codex</button>
-      <button onClick={() => onSwitch("openclaw")}>switch-openclaw</button>
+      <button onClick={() => onSwitch("opencode")}>switch-opencode</button>
     </div>
   ),
 }));
@@ -262,29 +262,31 @@ describe("App integration with MSW", () => {
     });
   });
 
-  it("duplicates openclaw providers with a generated key that avoids live-only ids", async () => {
-    setProviders("openclaw", {
+  it("duplicates opencode providers with a generated key that avoids live-only ids", async () => {
+    setProviders("opencode", {
       deepseek: {
         id: "deepseek",
         name: "DeepSeek",
         settingsConfig: {
-          baseUrl: "https://api.deepseek.com",
-          apiKey: "test-key",
-          api: "openai-completions",
-          models: [],
+          npm: "@ai-sdk/openai-compatible",
+          options: {
+            baseURL: "https://api.deepseek.com",
+            apiKey: "test-key",
+          },
+          models: {},
         },
         category: "custom",
         sortIndex: 0,
         createdAt: Date.now(),
       },
     });
-    setCurrentProviderId("openclaw", "deepseek");
-    setLiveProviderIds("openclaw", ["deepseek-copy"]);
+    setCurrentProviderId("opencode", "deepseek");
+    setLiveProviderIds("opencode", ["deepseek-copy"]);
 
     const { default: App } = await import("@/App");
     renderApp(App);
 
-    fireEvent.click(screen.getByText("switch-openclaw"));
+    fireEvent.click(screen.getByText("switch-opencode"));
 
     await waitFor(() =>
       expect(screen.getByTestId("provider-list").textContent).toContain(
@@ -301,36 +303,38 @@ describe("App integration with MSW", () => {
     });
 
     expect(toastErrorMock).not.toHaveBeenCalledWith(
-      expect.stringContaining("Provider key is required for openclaw"),
+      expect.stringContaining("Provider key is required for opencode"),
     );
   });
 
   it("shows toast when duplicate cannot load live provider ids", async () => {
-    setProviders("openclaw", {
+    setProviders("opencode", {
       deepseek: {
         id: "deepseek",
         name: "DeepSeek",
         settingsConfig: {
-          baseUrl: "https://api.deepseek.com",
-          apiKey: "test-key",
-          api: "openai-completions",
-          models: [],
+          npm: "@ai-sdk/openai-compatible",
+          options: {
+            baseURL: "https://api.deepseek.com",
+            apiKey: "test-key",
+          },
+          models: {},
         },
         category: "custom",
         sortIndex: 0,
         createdAt: Date.now(),
       },
     });
-    setCurrentProviderId("openclaw", "deepseek");
+    setCurrentProviderId("opencode", "deepseek");
 
     const liveIdsSpy = vi
-      .spyOn(providersApi, "getOpenClawLiveProviderIds")
+      .spyOn(providersApi, "getOpenCodeLiveProviderIds")
       .mockRejectedValueOnce(new Error("broken config"));
 
     const { default: App } = await import("@/App");
     renderApp(App);
 
-    fireEvent.click(screen.getByText("switch-openclaw"));
+    fireEvent.click(screen.getByText("switch-opencode"));
 
     await waitFor(() =>
       expect(screen.getByTestId("provider-list").textContent).toContain(

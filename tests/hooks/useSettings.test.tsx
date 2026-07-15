@@ -110,9 +110,7 @@ const createDirectorySettingsMock = (
     appConfig: "/home/mock/.cc-switch",
     claude: "/default/claude",
     codex: "/default/codex",
-    gemini: "/default/gemini",
     opencode: "/default/opencode",
-    openclaw: "/default/openclaw",
   },
   isLoading: false,
   initialAppConfigDir: undefined,
@@ -291,7 +289,9 @@ describe("useSettings hook", () => {
     const payload = mutateAsyncMock.mock.calls[0][0] as Settings;
     expect(payload.claudeConfigDir).toBe("/custom/claude");
     expect(payload.codexConfigDir).toBeUndefined();
-    expect(payload.openclawConfigDir).toBe("/custom/openclaw");
+    // Removed-app directory overrides are stripped on save
+    expect(payload.openclawConfigDir).toBeUndefined();
+    expect(payload.geminiConfigDir).toBeUndefined();
     expect(payload.language).toBe("en");
     expect(setAppConfigDirOverrideMock).toHaveBeenCalledWith("/override/app");
     // 状态改变，应该调用 API
@@ -458,10 +458,7 @@ describe("useSettings hook", () => {
     expect(directorySettingsMock.resetAllDirectories).toHaveBeenCalledWith({
       claude: "/server/claude",
       codex: undefined,
-      gemini: "/server/gemini",
       opencode: "/server/opencode",
-      openclaw: "/server/openclaw",
-      hermes: undefined,
     });
     expect(metadataMock.setRequiresRestart).toHaveBeenCalledWith(false);
   });

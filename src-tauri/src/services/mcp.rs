@@ -137,6 +137,9 @@ impl McpService {
             AppType::Hermes => {
                 mcp::sync_single_server_to_hermes(&Default::default(), &server.id, &server.server)?;
             }
+            AppType::Grok => {
+                log::debug!("Grok MCP is managed via ~/.grok/config.toml, skipping CC Switch MCP sync");
+            }
         }
         Ok(())
     }
@@ -171,6 +174,9 @@ impl McpService {
             }
             AppType::Hermes => {
                 mcp::remove_server_from_hermes(id)?;
+            }
+            AppType::Grok => {
+                log::debug!("Grok MCP is managed via ~/.grok/config.toml, skipping remove");
             }
         }
         Ok(())

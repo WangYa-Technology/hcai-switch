@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { FolderSearch, Undo2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,10 +15,8 @@ interface DirectorySettingsProps {
   onResetAppConfig: () => Promise<void>;
   claudeDir?: string;
   codexDir?: string;
-  geminiDir?: string;
   opencodeDir?: string;
-  openclawDir?: string;
-  hermesDir?: string;
+  grokDir?: string;
   onDirectoryChange: (app: DirectoryAppId, value?: string) => void;
   onBrowseDirectory: (app: DirectoryAppId) => Promise<void>;
   onResetDirectory: (app: DirectoryAppId) => Promise<void>;
@@ -33,10 +30,8 @@ export function DirectorySettings({
   onResetAppConfig,
   claudeDir,
   codexDir,
-  geminiDir,
   opencodeDir,
-  openclawDir,
-  hermesDir,
+  grokDir,
   onDirectoryChange,
   onBrowseDirectory,
   onResetDirectory,
@@ -45,7 +40,7 @@ export function DirectorySettings({
 
   return (
     <div className="space-y-6">
-      {/* CC Switch 配置目录 - 独立区块 */}
+      {/* HCAI Switch 配置目录 - 独立区块 */}
       <section className="space-y-4">
         <header className="space-y-1">
           <h3 className="text-sm font-medium">{t("settings.appConfigDir")}</h3>
@@ -82,7 +77,7 @@ export function DirectorySettings({
         </div>
       </section>
 
-      {/* Claude/Codex 配置目录 - 独立区块 */}
+      {/* Claude / Codex / OpenCode / Grok Build 配置目录 */}
       <section className="space-y-4">
         <header className="space-y-1">
           <h3 className="text-sm font-medium">
@@ -95,7 +90,6 @@ export function DirectorySettings({
 
         <DirectoryInput
           label={t("settings.claudeConfigDir")}
-          description={undefined}
           value={claudeDir}
           resolvedValue={resolvedDirs.claude}
           placeholder={t("settings.browsePlaceholderClaude")}
@@ -106,7 +100,6 @@ export function DirectorySettings({
 
         <DirectoryInput
           label={t("settings.codexConfigDir")}
-          description={undefined}
           value={codexDir}
           resolvedValue={resolvedDirs.codex}
           placeholder={t("settings.browsePlaceholderCodex")}
@@ -116,19 +109,7 @@ export function DirectorySettings({
         />
 
         <DirectoryInput
-          label={t("settings.geminiConfigDir")}
-          description={undefined}
-          value={geminiDir}
-          resolvedValue={resolvedDirs.gemini}
-          placeholder={t("settings.browsePlaceholderGemini")}
-          onChange={(val) => onDirectoryChange("gemini", val)}
-          onBrowse={() => onBrowseDirectory("gemini")}
-          onReset={() => onResetDirectory("gemini")}
-        />
-
-        <DirectoryInput
           label={t("settings.opencodeConfigDir")}
-          description={undefined}
           value={opencodeDir}
           resolvedValue={resolvedDirs.opencode}
           placeholder={t("settings.browsePlaceholderOpencode")}
@@ -138,25 +119,17 @@ export function DirectorySettings({
         />
 
         <DirectoryInput
-          label={t("settings.openclawConfigDir")}
-          description={undefined}
-          value={openclawDir}
-          resolvedValue={resolvedDirs.openclaw}
-          placeholder={t("settings.browsePlaceholderOpenclaw")}
-          onChange={(val) => onDirectoryChange("openclaw", val)}
-          onBrowse={() => onBrowseDirectory("openclaw")}
-          onReset={() => onResetDirectory("openclaw")}
-        />
-
-        <DirectoryInput
-          label={t("settings.hermesConfigDir")}
-          description={undefined}
-          value={hermesDir}
-          resolvedValue={resolvedDirs.hermes}
-          placeholder={t("settings.browsePlaceholderHermes")}
-          onChange={(val) => onDirectoryChange("hermes", val)}
-          onBrowse={() => onBrowseDirectory("hermes")}
-          onReset={() => onResetDirectory("hermes")}
+          label={t("settings.grokConfigDir", {
+            defaultValue: "Grok Build 配置目录",
+          })}
+          value={grokDir}
+          resolvedValue={resolvedDirs.grok}
+          placeholder={t("settings.browsePlaceholderGrok", {
+            defaultValue: "例如：/Users/<你的用户名>/.grok",
+          })}
+          onChange={(val) => onDirectoryChange("grok", val)}
+          onBrowse={() => onBrowseDirectory("grok")}
+          onReset={() => onResetDirectory("grok")}
         />
       </section>
     </div>
@@ -185,22 +158,20 @@ function DirectoryInput({
   onReset,
 }: DirectoryInputProps) {
   const { t } = useTranslation();
-  const displayValue = useMemo(
-    () => value ?? resolvedValue ?? "",
-    [value, resolvedValue],
-  );
 
   return (
     <div className="space-y-1.5">
-      <div className="space-y-1">
-        <p className="text-xs font-medium text-foreground">{label}</p>
+      <div className="flex items-baseline justify-between gap-2">
+        <label className="text-xs font-medium text-foreground">{label}</label>
         {description ? (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <span className="text-[11px] text-muted-foreground">
+            {description}
+          </span>
         ) : null}
       </div>
       <div className="flex items-center gap-2">
         <Input
-          value={displayValue}
+          value={value ?? resolvedValue ?? ""}
           placeholder={placeholder}
           className="text-xs"
           onChange={(event) => onChange(event.target.value)}
