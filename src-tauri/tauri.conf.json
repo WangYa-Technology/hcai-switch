@@ -64,7 +64,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc3RjlEQkE4MTg5RDM5NjgKUldSb09aMFlxTnY1ZDk5YVBHK0lWVk5mT0NMQ3lGWk9sa2lNNmtTZGZhdWlCdGZrZ2RUc0NXcjAK",
       "endpoints": [
-        "https://github.com/HeLongaa/hcai-switch/releases/latest/download/latest.json"
+        "https://github.com/WangYa-Technology/hcai-switch/releases/latest/download/latest.json"
       ]
     }
   }
